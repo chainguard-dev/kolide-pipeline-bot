@@ -22,6 +22,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
 	"time"
 
 	"cloud.google.com/go/storage"
@@ -32,7 +33,7 @@ var (
 	bucketFlag     = flag.String("bucket", "", "Bucket to query")
 	prefixFlag     = flag.String("prefix", "", "directory of contents to query")
 	webhookURLFlag = flag.String("webhook-url", "", "Slack webhook URL to hit")
-	portFlag       = flag.Int("port", 0, "port to run at (optional)")
+	serveFlag      = flag.Bool("serve", false, "")
 )
 
 func main() {
@@ -52,13 +53,17 @@ func main() {
 	// Creates a Bucket instance.
 	bucket := client.Bucket(*bucketFlag)
 
-	if *portFlag > 0 {
+	if *serveFlag {
+		port := os.Getenv("PORT")
+		if port == "" {
+			port = "8080"
+		}
 		Serve(ctx, &Config{
 			Bucket:     bucket,
 			Prefix:     *prefixFlag,
 			WebhookURL: *webhookURLFlag,
 			Cutoff:     cutoff,
-			Addr:       fmt.Sprintf(":%d", *portFlag),
+			Addr:       fmt.Sprintf(":%s", port),
 		})
 	}
 

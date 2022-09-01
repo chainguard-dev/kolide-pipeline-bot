@@ -1,5 +1,6 @@
 #!/bin/sh
-export KO_DOCKER_REPO="gcr.io/kolide/pipeline-notifier"
+PROJECT="kolide-357616"
+export KO_DOCKER_REPO="gcr.io/${PROJECT}/pipeline-notifier"
 
 gcloud run deploy pipeline-notifier --image="$(ko publish .)" --args=-serve \
-  --region us-east4 --project kolide
+  --region us-central1 --project "${PROJECT}"
