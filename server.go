@@ -12,7 +12,13 @@ import (
 )
 
 func Serve(_ context.Context, sc *Config) {
-	s := &Server{bucket: sc.Bucket, prefix: sc.Prefix, webhookURL: sc.WebhookURL, lastRefresh: sc.Cutoff}
+	s := &Server{
+		bucket:      sc.Bucket,
+		prefix:      sc.Prefix,
+		webhookURL:  sc.WebhookURL,
+		lastRefresh: sc.Cutoff,
+		notified:    map[string]bool{},
+	}
 	http.HandleFunc("/refreshz", s.Refresh())
 	http.HandleFunc("/healthz", s.Healthz())
 	http.HandleFunc("/threadz", s.Threadz())
