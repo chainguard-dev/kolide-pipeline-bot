@@ -50,8 +50,23 @@ func main() {
 	}
 	defer client.Close()
 
+	bucketName := os.Getenv("BUCKET_NAME")
+	if *bucketFlag != "" {
+		bucketName = *bucketFlag
+	}
+
 	// Creates a Bucket instance.
-	bucket := client.Bucket(*bucketFlag)
+	bucket := client.Bucket(bucketName)
+
+	bucketPrefix := os.Getenv("BUCKET_PREFIX")
+	if *prefixFlag != "" {
+		bucketPrefix = *prefixFlag
+	}
+
+	webhookURL := os.Getenv("WEBHOOK_URL")
+	if *webhookURLFlag != "" {
+		webhookURL = *webhookURLFlag
+	}
 
 	if *serveFlag {
 		port := os.Getenv("PORT")
@@ -60,19 +75,19 @@ func main() {
 		}
 		Serve(ctx, &Config{
 			Bucket:     bucket,
-			Prefix:     *prefixFlag,
-			WebhookURL: *webhookURLFlag,
+			Prefix:     bucketPrefix,
+			WebhookURL: webhookURL,
 			Cutoff:     cutoff,
 			Addr:       fmt.Sprintf(":%s", port),
 		})
 	}
 
-	rows := getRows(ctx, bucket, *prefixFlag, cutoff)
+	rows := getRows(ctx, bucket, bucketPrefix, cutoff)
 	klog.Infof("collected %d rows", len(rows))
 
-	if *webhookURLFlag != "" {
+	if webhookURL != "" {
 		for _, r := range rows {
-			if err := notify(*webhookURLFlag, r); err != nil {
+			if err := notify(webhookURL, r); err != nil {
 				klog.Errorf("notify error: %v", err)
 			}
 		}
