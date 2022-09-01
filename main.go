@@ -19,19 +19,12 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
 	"log"
-	"path/filepath"
-	"strings"
 	"time"
 
 	"cloud.google.com/go/storage"
-	"github.com/multiplay/go-slack/chat"
-	"github.com/multiplay/go-slack/webhook"
-	"google.golang.org/api/iterator"
 	"k8s.io/klog/v2"
 )
 
@@ -39,127 +32,8 @@ var (
 	bucketFlag     = flag.String("bucket", "", "Bucket to query")
 	prefixFlag     = flag.String("prefix", "", "directory of contents to query")
 	webhookURLFlag = flag.String("webhook-url", "", "Slack webhook URL to hit")
+	portFlag       = flag.Int("port", 0, "port to run at (optional)")
 )
-
-type OutFile struct {
-	DiffResults diffResults       `json:"diffResults"`
-	Name        string            `json:"name"`
-	Decorations map[string]string `json:"decorations"`
-	UNIXTime    int               `json:"unixTime"`
-}
-
-type diffResults struct {
-	Removed []Row
-	Added   []Row
-}
-
-type Row map[string]string
-
-type DecoratedRow struct {
-	Decorations map[string]string
-	Kind        string
-	UNIXTime    int
-	Row         Row
-}
-
-func (r Row) String() string {
-	// launchd
-	p, ok := r["program_arguments"]
-	if ok {
-		return fmt.Sprintf("%s: %s", r["path"], p)
-	}
-
-	// listening_ports
-	addr, ok := r["address"]
-	if ok {
-		return fmt.Sprintf("%s in %s listening at [%s]:%s (%s): %s", r["name"], r["cwd"], addr, r["port"], r["protocol"], r["cmdline"])
-	}
-
-	addr, ok = r["remote_address"]
-	if ok {
-		return fmt.Sprintf("%s in %s talking to [%s]:%s (%s): %s", r["name"], r["cwd"], addr, r["remote_port"], r["protocol"], r["cmdline"])
-	}
-
-	// file paths
-	if _, ok = r["atime"]; ok {
-		return fmt.Sprintf("%s (%s)", r["path"], r["type"])
-	}
-
-	// processes
-	if _, ok := r["cmdline"]; ok {
-		return fmt.Sprintf("name=%s path=%s cmdline=%s cwd=%s", r["name"], r["path"], r["cmdline"], r["cwd"])
-	}
-
-	var sb strings.Builder
-	for k, v := range r {
-		sb.WriteString(fmt.Sprintf("%s=%s ", k, v))
-	}
-
-	return sb.String()
-}
-
-func getRows(ctx context.Context, bucket *storage.BucketHandle, prefix string, cutoff time.Time) []DecoratedRow {
-	it := bucket.Objects(ctx, &storage.Query{Prefix: prefix})
-	lastKind := ""
-
-	rows := []DecoratedRow{}
-	seen := map[string]bool{}
-
-	for {
-		attrs, err := it.Next()
-		if err == iterator.Done {
-			break
-		}
-		if err != nil {
-			klog.Errorf("Bucket(%q).Objects: %v", bucket, err)
-		}
-
-		if attrs.Created.Before(cutoff) {
-			continue
-		}
-
-		rc, err := bucket.Object(attrs.Name).NewReader(ctx)
-		if err != nil {
-			klog.Fatal(err)
-		}
-		defer rc.Close()
-		body, err := io.ReadAll(rc)
-		if err != nil {
-			klog.Fatal(err)
-		}
-
-		out := &OutFile{}
-		err = json.Unmarshal(body, out)
-		if err != nil {
-			klog.Fatalf("unmarshal: %+v", err)
-		}
-
-		kind := filepath.Base(filepath.Dir(filepath.Dir(attrs.Name)))
-		if kind != lastKind {
-			klog.Infof("=== kind: %s ===", kind)
-			lastKind = kind
-		}
-
-		for _, r := range out.DiffResults.Added {
-			msg := fmt.Sprintf("%s/%s: %s", kind, out.Decorations["computer_name"], r)
-			if !seen[msg] {
-				klog.Infof(msg)
-				rows = append(rows, DecoratedRow{Decorations: out.Decorations, UNIXTime: out.UNIXTime, Kind: kind, Row: r})
-			}
-			seen[msg] = true
-		}
-	}
-
-	return rows
-}
-
-func notify(url string, row DecoratedRow) error {
-	c := webhook.New(url)
-	m := &chat.Message{Text: fmt.Sprintf("*%s* on %s:\n`%s`", row.Kind, row.Decorations["computer_name"], row.Row)}
-	resp, err := m.Send(c)
-	klog.Infof("response: %+v err=%v", resp, err)
-	return err
-}
 
 func main() {
 	flag.Parse()
@@ -178,6 +52,16 @@ func main() {
 	// Creates a Bucket instance.
 	bucket := client.Bucket(*bucketFlag)
 
+	if *portFlag > 0 {
+		Serve(ctx, &Config{
+			Bucket:     bucket,
+			Prefix:     *prefixFlag,
+			WebhookURL: *webhookURLFlag,
+			Cutoff:     cutoff,
+			Addr:       fmt.Sprintf(":%d", *portFlag),
+		})
+	}
+
 	rows := getRows(ctx, bucket, *prefixFlag, cutoff)
 	klog.Infof("collected %d rows", len(rows))
 
@@ -188,4 +72,5 @@ func main() {
 			}
 		}
 	}
+
 }
