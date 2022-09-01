@@ -74,6 +74,7 @@ func (r Row) String() string {
 }
 
 func getRows(ctx context.Context, bucket *storage.BucketHandle, prefix string, cutoff time.Time) []DecoratedRow {
+	klog.Infof("querying bucket for items matching prefix %q ...", prefix)
 	it := bucket.Objects(ctx, &storage.Query{Prefix: prefix})
 	lastKind := ""
 
@@ -87,6 +88,7 @@ func getRows(ctx context.Context, bucket *storage.BucketHandle, prefix string, c
 		}
 		if err != nil {
 			klog.Errorf("Bucket(%q).Objects: %v", bucket, err)
+			break
 		}
 
 		if attrs.Created.Before(cutoff) {
