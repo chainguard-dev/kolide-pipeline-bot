@@ -4,6 +4,7 @@ Send notifications when Kolide Pipeline outputs change
 
 ## Features
 
+* Support for Kolide Differential Logs output via the Log Pipeline
 * Rich Slack notifications
 * Google Cloud Storage
 * CLI and HTTP server modes
