@@ -34,6 +34,7 @@ var (
 	prefixFlag     = flag.String("prefix", "", "directory of contents to query")
 	webhookURLFlag = flag.String("webhook-url", "", "Slack webhook URL to hit")
 	serveFlag      = flag.Bool("serve", false, "")
+	maxAgeFlag     = flag.Duration("max-age", 1*time.Hour, "Maximum age of events to include")
 )
 
 func main() {
@@ -41,7 +42,7 @@ func main() {
 
 	ctx := context.Background()
 
-	cutoff := time.Now().Add(-40 * time.Minute)
+	cutoff := time.Now().Add(*maxAgeFlag * -1)
 
 	// Creates a client.
 	client, err := storage.NewClient(ctx)

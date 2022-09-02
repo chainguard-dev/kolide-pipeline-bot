@@ -87,7 +87,7 @@ func getRows(ctx context.Context, bucket *storage.BucketHandle, prefix string, c
 			break
 		}
 		if err != nil {
-			klog.Errorf("Bucket(%q).Objects: %v", bucket, err)
+			klog.Errorf("error fetching objects: %v", err)
 			break
 		}
 

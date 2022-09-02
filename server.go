@@ -22,6 +22,7 @@ func Serve(_ context.Context, sc *Config) {
 	http.HandleFunc("/refreshz", s.Refresh())
 	http.HandleFunc("/healthz", s.Healthz())
 	http.HandleFunc("/threadz", s.Threadz())
+	klog.Infof("Config: %+v", sc)
 	klog.Infof("Listening on %s ...", sc.Addr)
 	if err := http.ListenAndServe(sc.Addr, nil); err != nil {
 		klog.Fatalf("serve failed: %v", err)
