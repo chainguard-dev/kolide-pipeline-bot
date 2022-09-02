@@ -47,3 +47,26 @@ kolide-pipeline-notifier \
 ```
 
 This allows the kolide-pipeline-notifier to be run in environments that assume an HTTP frontend, such as Google Cloud Run. You can then use a scheduler service to hit `/refreshz` as often as you want to poll for results.
+
+## Environment Variables
+
+For your deployment, you may find it more useful to use environment variables than arguments. The `kolide-pipeline-notifier` supports a handful of them:
+
+* `PORT`
+* `BUCKET_NAME`
+* `BUCKET_PREFIX`
+* `WEBHOOK_URL`
+
+## Google Cloud Run
+
+Using `ko`, it is easy to build `kolide-pipeline-notifier` to your local repo and deploy it straight into production:
+
+```shell
+export KO_DOCKER_REPO="gcr.io/<your project>/pipeline-notifier"
+
+gcloud run deploy pipeline-notifier \
+  --image="$(ko publish .)" \
+  --args=-serve \
+  --region us-central1 \
+  --project "<your project>"
+```
