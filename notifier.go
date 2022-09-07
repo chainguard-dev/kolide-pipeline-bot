@@ -52,7 +52,17 @@ func (r Row) String() string {
 
 	addr, ok = r["remote_address"]
 	if ok {
-		return fmt.Sprintf("%s in %s talking to [%s]:%s (%s): %s", r["name"], r["cwd"], addr, r["remote_port"], r["protocol"], r["cmdline"])
+		return fmt.Sprintf("%s in %s is connected to [%s]:%s (%s): %s", r["name"], r["cwd"], addr, r["remote_port"], r["protocol"], r["cmdline"])
+	}
+
+	// delta
+	if _, ok = r["delta"]; ok {
+		return fmt.Sprintf("%s run %ss after ctime", r["path"], r["delta"])
+	}
+
+	// unexpected parents
+	if _, ok = r["parent_path"]; ok {
+		return fmt.Sprintf("%s invoked %s via %s", r["parent_path"], r["path"], r["cmdline"])
 	}
 
 	// file paths
