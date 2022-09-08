@@ -13,11 +13,12 @@ import (
 
 func Serve(_ context.Context, sc *Config) {
 	s := &Server{
-		bucket:      sc.Bucket,
-		prefix:      sc.Prefix,
-		webhookURL:  sc.WebhookURL,
-		lastRefresh: sc.Cutoff,
-		notified:    map[string]bool{},
+		bucket:            sc.Bucket,
+		prefix:            sc.Prefix,
+		webhookURL:        sc.WebhookURL,
+		lastRefresh:       sc.Cutoff,
+		maxNoticesPerKind: sc.MaxNoticesPerKind,
+		notified:          map[string]bool{},
 	}
 	http.HandleFunc("/refreshz", s.Refresh())
 	http.HandleFunc("/healthz", s.Healthz())
@@ -30,19 +31,21 @@ func Serve(_ context.Context, sc *Config) {
 }
 
 type Config struct {
-	Bucket     *storage.BucketHandle
-	Prefix     string
-	WebhookURL string
-	Cutoff     time.Time
-	Addr       string
+	Bucket            *storage.BucketHandle
+	Prefix            string
+	WebhookURL        string
+	Cutoff            time.Time
+	Addr              string
+	MaxNoticesPerKind int
 }
 
 type Server struct {
-	bucket      *storage.BucketHandle
-	prefix      string
-	webhookURL  string
-	lastRefresh time.Time
-	notified    map[string]bool
+	bucket            *storage.BucketHandle
+	prefix            string
+	webhookURL        string
+	lastRefresh       time.Time
+	notified          map[string]bool
+	maxNoticesPerKind int
 }
 
 func (s *Server) Refresh() http.HandlerFunc {
@@ -54,8 +57,14 @@ func (s *Server) Refresh() http.HandlerFunc {
 		klog.Infof("collected %d rows", len(rows))
 		// lol race
 		s.lastRefresh = time.Now()
+		total := map[string]int{}
 
 		for _, r := range rows {
+			if total[r.Kind] > s.maxNoticesPerKind {
+				klog.Warningf("notification overflow for %s (%d), will not notify for: %s", r.Kind, total[r.Kind], r.Row)
+				continue
+			}
+
 			msg := r.Row.String()
 			if s.notified[msg] {
 				klog.Infof("skipping duplicate message: %s", msg)

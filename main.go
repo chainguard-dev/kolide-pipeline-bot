@@ -35,6 +35,7 @@ var (
 	webhookURLFlag = flag.String("webhook-url", "", "Slack webhook URL to hit")
 	serveFlag      = flag.Bool("serve", false, "")
 	maxAgeFlag     = flag.Duration("max-age", 1*time.Hour, "Maximum age of events to include")
+	maxNoticesFlag = flag.Int("max-notices-per-kind", 5, "Maximum notices per kind (spam reduction)")
 )
 
 func main() {
@@ -75,19 +76,27 @@ func main() {
 			port = "8080"
 		}
 		Serve(ctx, &Config{
-			Bucket:     bucket,
-			Prefix:     bucketPrefix,
-			WebhookURL: webhookURL,
-			Cutoff:     cutoff,
-			Addr:       fmt.Sprintf(":%s", port),
+			Bucket:            bucket,
+			Prefix:            bucketPrefix,
+			WebhookURL:        webhookURL,
+			Cutoff:            cutoff,
+			Addr:              fmt.Sprintf(":%s", port),
+			MaxNoticesPerKind: *maxNoticesFlag,
 		})
 	}
 
 	rows := getRows(ctx, bucket, bucketPrefix, cutoff)
 	klog.Infof("collected %d rows", len(rows))
 
+	total := map[string]int{}
+
 	if webhookURL != "" {
 		for _, r := range rows {
+			total[r.Kind]++
+			if total[r.Kind] > *maxNoticesFlag {
+				klog.Warningf("notification overflow for %s (%d), will not notify for: %s", r.Kind, total[r.Kind], r.Row)
+				continue
+			}
 			if err := notify(webhookURL, r); err != nil {
 				klog.Errorf("notify error: %v", err)
 			}
