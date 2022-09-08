@@ -34,7 +34,7 @@ var (
 	prefixFlag     = flag.String("prefix", "", "directory of contents to query")
 	webhookURLFlag = flag.String("webhook-url", "", "Slack webhook URL to hit")
 	serveFlag      = flag.Bool("serve", false, "")
-	maxAgeFlag     = flag.Duration("max-age", 1*time.Hour, "Maximum age of events to include")
+	maxAgeFlag     = flag.Duration("max-age", 10*time.Minute, "Maximum age of events to include")
 	maxNoticesFlag = flag.Int("max-notices-per-kind", 5, "Maximum notices per kind (spam reduction)")
 )
 
