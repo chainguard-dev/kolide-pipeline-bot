@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -39,7 +40,14 @@ type DecoratedRow struct {
 
 func (r Row) String() string {
 	var sb strings.Builder
-	for k, v := range r {
+	keys := []string{}
+	for k := range r {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	for _, k := range keys {
+		v := r[k]
 		sb.WriteString(fmt.Sprintf(`%s=%q `, k, v))
 	}
 	return strings.TrimSpace(sb.String())
