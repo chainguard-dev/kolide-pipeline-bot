@@ -60,6 +60,7 @@ func (s *Server) Refresh() http.HandlerFunc {
 		total := map[string]int{}
 
 		for _, r := range rows {
+			total[r.Kind]++
 			if total[r.Kind] > s.maxNoticesPerKind {
 				klog.Warningf("notification overflow for %s (%d), will not notify for: %s", r.Kind, total[r.Kind], r.Row)
 				continue
