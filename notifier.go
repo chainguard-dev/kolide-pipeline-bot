@@ -38,49 +38,11 @@ type DecoratedRow struct {
 }
 
 func (r Row) String() string {
-	// launchd
-	p, ok := r["program_arguments"]
-	if ok {
-		return fmt.Sprintf("%s: %s", r["path"], p)
-	}
-
-	// listening_ports
-	addr, ok := r["address"]
-	if ok {
-		return fmt.Sprintf("%s in %s listening at [%s]:%s (%s): %s", r["name"], r["cwd"], addr, r["port"], r["protocol"], r["cmdline"])
-	}
-
-	addr, ok = r["remote_address"]
-	if ok {
-		return fmt.Sprintf("%s in %s is connected to [%s]:%s (%s): %s", r["name"], r["cwd"], addr, r["remote_port"], r["protocol"], r["cmdline"])
-	}
-
-	// delta
-	if _, ok = r["delta"]; ok {
-		return fmt.Sprintf("%s run %ss after ctime", r["path"], r["delta"])
-	}
-
-	// unexpected parents
-	if _, ok = r["parent_path"]; ok {
-		return fmt.Sprintf("%s invoked %s via %s", r["parent_path"], r["path"], r["cmdline"])
-	}
-
-	// file paths
-	if _, ok = r["atime"]; ok {
-		return fmt.Sprintf("%s (%s)", r["path"], r["type"])
-	}
-
-	// processes
-	if _, ok := r["cmdline"]; ok {
-		return fmt.Sprintf("name=%s path=%s cmdline=%s cwd=%s", r["name"], r["path"], r["cmdline"], r["cwd"])
-	}
-
 	var sb strings.Builder
 	for k, v := range r {
-		sb.WriteString(fmt.Sprintf("%s=%s ", k, v))
+		sb.WriteString(fmt.Sprintf(`%s=%q `, k, v))
 	}
-
-	return sb.String()
+	return strings.TrimSpace(sb.String())
 }
 
 func getRows(ctx context.Context, bucket *storage.BucketHandle, prefix string, cutoff time.Time) []DecoratedRow {
