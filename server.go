@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"cloud.google.com/go/storage"
+	"github.com/VirusTotal/vt-go"
 	"k8s.io/klog/v2"
 )
 
@@ -19,6 +20,7 @@ func Serve(_ context.Context, sc *Config) {
 		lastRefresh:       sc.Cutoff,
 		maxNoticesPerKind: sc.MaxNoticesPerKind,
 		notified:          map[string]bool{},
+		vtc:               sc.VirusTotalClient,
 	}
 	http.HandleFunc("/refreshz", s.Refresh())
 	http.HandleFunc("/healthz", s.Healthz())
@@ -37,6 +39,7 @@ type Config struct {
 	Cutoff            time.Time
 	Addr              string
 	MaxNoticesPerKind int
+	VirusTotalClient  *vt.Client
 }
 
 type Server struct {
@@ -46,6 +49,7 @@ type Server struct {
 	lastRefresh       time.Time
 	notified          map[string]bool
 	maxNoticesPerKind int
+	vtc               *vt.Client
 }
 
 func (s *Server) Refresh() http.HandlerFunc {
@@ -53,7 +57,7 @@ func (s *Server) Refresh() http.HandlerFunc {
 		klog.Infof("%s: %s %s", r.RemoteAddr, r.Method, r.URL)
 		duration := time.Since(s.lastRefresh)
 
-		rows := getRows(r.Context(), s.bucket, s.prefix, s.lastRefresh)
+		rows := getRows(r.Context(), s.bucket, s.prefix, s.lastRefresh, s.vtc)
 		klog.Infof("collected %d rows", len(rows))
 		// lol race
 		s.lastRefresh = time.Now()

@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"cloud.google.com/go/storage"
+	"github.com/VirusTotal/vt-go"
 	"k8s.io/klog/v2"
 )
 
@@ -70,6 +71,12 @@ func main() {
 		webhookURL = *webhookURLFlag
 	}
 
+	var vtClient *vt.Client
+	vtClient = nil
+	if key := os.Getenv("VIRUSTOTAL_KEY"); key != "" {
+		vtClient = vt.NewClient(key)
+	}
+
 	if *serveFlag {
 		port := os.Getenv("PORT")
 		if port == "" {
@@ -82,24 +89,23 @@ func main() {
 			Cutoff:            cutoff,
 			Addr:              fmt.Sprintf(":%s", port),
 			MaxNoticesPerKind: *maxNoticesFlag,
+			VirusTotalClient:  vtClient,
 		})
 	}
 
-	rows := getRows(ctx, bucket, bucketPrefix, cutoff)
+	rows := getRows(ctx, bucket, bucketPrefix, cutoff, vtClient)
 	klog.Infof("collected %d rows", len(rows))
 
 	total := map[string]int{}
 
-	if webhookURL != "" {
-		for _, r := range rows {
-			total[r.Kind]++
-			if total[r.Kind] > *maxNoticesFlag {
-				klog.Warningf("notification overflow for %s (%d), will not notify for: %s", r.Kind, total[r.Kind], r.Row)
-				continue
-			}
-			if err := notify(webhookURL, r); err != nil {
-				klog.Errorf("notify error: %v", err)
-			}
+	for _, r := range rows {
+		total[r.Kind]++
+		if total[r.Kind] > *maxNoticesFlag {
+			klog.Warningf("notification overflow for %s (%d), will not notify for: %s", r.Kind, total[r.Kind], r.Row)
+			continue
+		}
+		if err := notify(webhookURL, r); err != nil {
+			klog.Errorf("notify error: %v", err)
 		}
 	}
 
