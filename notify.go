@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/mergestat/timediff"
@@ -12,8 +13,7 @@ import (
 
 func notify(url string, row DecoratedRow) error {
 	t := time.Unix(row.UNIXTime, 0)
-	diff := timediff.TimeDiff(t)
-
+	diff := strings.Replace(timediff.TimeDiff(t), " ago", " delay", 1)
 	text := fmt.Sprintf("*%s* on %s at %s (%s):\n> %s", row.Kind, row.Decorations["computer_name"], t.Format(time.RFC822), diff, row.Row)
 	if len(row.VirusTotal) > 0 {
 		text = text + fmt.Sprintf("\n\n> VT: %s", row.VirusTotal)
