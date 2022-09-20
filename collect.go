@@ -48,8 +48,8 @@ func (r Row) String() string {
 
 	for _, k := range keys {
 		v := r[k]
-		if len(v) > 256 {
-			v = v[0:256] + "..."
+		if len(v) > 384 {
+			v = v[0:384] + "..."
 		}
 		sb.WriteString(fmt.Sprintf(`%s=%q `, k, v))
 	}

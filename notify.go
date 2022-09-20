@@ -14,7 +14,7 @@ func notify(url string, row DecoratedRow) error {
 	t := time.Unix(row.UNIXTime, 0)
 	diff := timediff.TimeDiff(t)
 
-	text := fmt.Sprintf("*%s* on %s at %s (%s ago):\n> %s", row.Kind, row.Decorations["computer_name"], t, diff, row.Row)
+	text := fmt.Sprintf("*%s* on %s at %s (%s):\n> %s", row.Kind, row.Decorations["computer_name"], t.Format(time.RFC822), diff, row.Row)
 	if len(row.VirusTotal) > 0 {
 		text = text + fmt.Sprintf("\n\n> VT: %s", row.VirusTotal)
 	}
