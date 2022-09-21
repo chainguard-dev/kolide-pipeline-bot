@@ -76,6 +76,16 @@ func vtInterpret(c *vt.Client, key string) (string, error) {
 		return "not found", nil
 	}
 
+	tags, err := vo.GetStringSlice("tags")
+	if err != nil {
+		return "", fmt.Errorf("tags: %w", err)
+	}
+
+	summary := ""
+	if tags != nil {
+		summary = strings.Join(tags, " ")
+	}
+
 	h, err := vo.GetInt64("last_analysis_stats.harmless")
 	if err != nil {
 		return "", fmt.Errorf("last_analysis_stats.harmless: %w", err)
@@ -98,64 +108,47 @@ func vtInterpret(c *vt.Client, key string) (string, error) {
 
 	switch {
 	case m > 3:
-		lines = append(lines, fmt.Sprintf("*MALICIOUS[%d]*: %s", m, url))
+		summary = fmt.Sprintf("%s *MALICIOUS[%d]*: %s", summary, m, url)
 	case m > 1:
-		lines = append(lines, fmt.Sprintf("*Possibly malicious[%d]*: %s", m, url))
+		summary = fmt.Sprintf("%s *Possibly malicious[%d]*: %s", summary, m, url)
 	case s > 1:
-		lines = append(lines, fmt.Sprintf("*Possibly suspicious[%d]*: %s", s, url))
+		summary = fmt.Sprintf("%s *Possibly suspicious[%d]*: %s", summary, s, url)
 	case h > 3:
-		lines = append(lines, fmt.Sprintf("harmless[%d]: %s", h, url))
+		summary = fmt.Sprintf("%s harmless[%d]: %s", summary, h, url)
 	case u > 1:
-		lines = append(lines, fmt.Sprintf("undetected[%d]: %s", u, url))
+		summary = fmt.Sprintf("%s undetected[%d]: %s", summary, u, url)
 	default:
-		lines = append(lines, fmt.Sprintf("unknown: %s", url))
+		summary = fmt.Sprintf("%s unknown: %s", summary, url)
 	}
 
-	attr, err := vo.Get("attributes")
+	lines = append(lines, summary)
+
+	net := ""
+	as, err := vo.GetString("as_owner")
 	if err != nil {
-		klog.Errorf("attributes: %v", err)
+		klog.Errorf("as_owner: %v", err)
 	}
-	klog.Infof("ATTR: %+v", attr)
 
-	as, err := vo.GetString("attributes.as_owner")
-	if err == nil {
-		klog.Errorf("attributes.as_owner: %v", err)
+	co, err := vo.GetString("country")
+	if err != nil {
+		klog.Errorf("country: %v", err)
 	}
+
 	if as != "" {
-		lines = append(lines, fmt.Sprintf("AS: %s", as))
+		net = fmt.Sprintf("Net: %s [%s] ", as, co)
 	}
 
-	co, err := vo.GetString("attributes.country")
-	if err == nil {
-		klog.Errorf("attributes.country: %v", err)
-	}
-
-	if co != "" {
-		lines = append(lines, fmt.Sprintf("Country: %s", co))
-	}
-
-	sub, err := vo.GetString("last_https_certificate.subject")
-	if err == nil {
+	sub, err := vo.GetStringSlice("last_https_certificate.extensions.subject_alternative_name")
+	if err != nil {
 		klog.Errorf("last_https_certificate.subject: %v", err)
 	}
-	if sub != "" {
-		lines = append(lines, fmt.Sprintf("Cert: %s", sub))
-	}
 
-	if co != "" {
-		lines = append(lines, fmt.Sprintf("Country: %s", co))
+	if len(sub) > 0 {
+		net = fmt.Sprintf("%sCerts: %s", net, strings.Join(sub, ","))
 	}
+	lines = append(lines, net)
 
-	tags, err := vo.GetStringSlice("tags")
-	if err != nil {
-		return "", fmt.Errorf("tags: %w", err)
-	}
-
-	if tags != nil {
-		lines = append(lines, fmt.Sprintf("tags: %s", strings.Join(tags, " ")))
-	}
-
-	return strings.Join(lines, "; "), nil
+	return strings.Join(lines, "\n>   "), nil
 }
 
 func vtMetadata(r Row, c *vt.Client) (VTRow, error) {
