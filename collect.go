@@ -53,7 +53,7 @@ func (r Row) String() string {
 		v := r[k]
 
 		// exception keys are printed last
-		if strings.HasPrefix(k, "exception") || strings.HasSuffix(k, "_key") {
+		if strings.HasSuffix(k, "exception") || strings.HasSuffix(k, "_key") {
 			if kb.Len() == 0 {
 				kb.WriteString("\n\n")
 			}
@@ -65,9 +65,10 @@ func (r Row) String() string {
 			v = v[0:384] + "..."
 		}
 		text := fmt.Sprintf(`%s:%s `, k, v)
-		if strings.Contains(v, " ") {
+		if strings.Contains(v, " ") || strings.Contains(v, ":") {
 			text = fmt.Sprintf(`%s:%q `, k, v)
 		}
+
 		if sinceBreak > 100 || (sinceBreak > 0 && (len(text)+sinceBreak) > 100) {
 			klog.Infof("[%d/%d] breaking before %s", sinceBreak, len(text), text)
 			sb.WriteString("\n> ")

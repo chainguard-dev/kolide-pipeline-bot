@@ -98,17 +98,17 @@ func vtInterpret(c *vt.Client, key string) (string, error) {
 
 	switch {
 	case m > 3:
-		lines = append(lines, fmt.Sprintf("*MALICIOUS* (%d hits)*: %s", m, url))
+		lines = append(lines, fmt.Sprintf("*MALICIOUS[%d]*: %s", m, url))
 	case m > 1:
-		lines = append(lines, fmt.Sprintf("*Possibly malicious* (%d hits)*: %s", m, url))
+		lines = append(lines, fmt.Sprintf("*Possibly malicious[%d]*: %s", m, url))
 	case s > 1:
-		lines = append(lines, fmt.Sprintf("*Possibly suspicious* (%d hits)*: %s", s, url))
+		lines = append(lines, fmt.Sprintf("*Possibly suspicious[%d]*: %s", s, url))
 	case h > 3:
-		lines = append(lines, fmt.Sprintf("Harmless (%d hits): %s", h, url))
+		lines = append(lines, fmt.Sprintf("harmless[%d]: %s", h, url))
 	case u > 1:
-		lines = append(lines, fmt.Sprintf("Undetected (%d hits): %s", u, url))
+		lines = append(lines, fmt.Sprintf("undetected[%d]: %s", u, url))
 	default:
-		lines = append(lines, fmt.Sprintf("Unknown: %s", url))
+		lines = append(lines, fmt.Sprintf("unknown: %s", url))
 	}
 
 	attr, err := vo.Get("attributes")
