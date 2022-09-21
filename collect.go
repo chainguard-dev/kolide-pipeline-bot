@@ -35,25 +35,51 @@ type DecoratedRow struct {
 	Kind        string
 	UNIXTime    int64
 	Row         Row
-	VirusTotal  Row
+	VirusTotal  VTRow
 }
 
 func (r Row) String() string {
 	var sb strings.Builder
+	var kb strings.Builder
+
 	keys := []string{}
 	for k := range r {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
+	sinceBreak := 0
 
 	for _, k := range keys {
 		v := r[k]
+
+		// exception keys are printed last
+		if strings.HasPrefix(k, "exception") || strings.HasSuffix(k, "_key") {
+			if kb.Len() == 0 {
+				kb.WriteString("\n\n")
+			}
+			kb.WriteString(fmt.Sprintf("> %s: %q\n", k, v))
+			continue
+		}
+
 		if len(v) > 384 {
 			v = v[0:384] + "..."
 		}
-		sb.WriteString(fmt.Sprintf(`%s=%q `, k, v))
+		text := fmt.Sprintf(`%s:%s `, k, v)
+		if strings.Contains(v, " ") {
+			text = fmt.Sprintf(`%s:%q `, k, v)
+		}
+		if sinceBreak > 100 || (sinceBreak > 0 && (len(text)+sinceBreak) > 100) {
+			klog.Infof("[%d/%d] breaking before %s", sinceBreak, len(text), text)
+			sb.WriteString("\n> ")
+			sinceBreak = len(text)
+		} else {
+			sinceBreak += len(text)
+		}
+
+		sb.WriteString(text)
 	}
-	return strings.TrimSpace(sb.String())
+
+	return strings.TrimSpace(sb.String() + kb.String())
 }
 
 func getRows(ctx context.Context, bucket *storage.BucketHandle, prefix string, cutoff time.Time, vtc *vt.Client) []DecoratedRow {

@@ -2,11 +2,33 @@ package main
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/VirusTotal/vt-go"
 	"k8s.io/klog/v2"
 )
+
+type VTRow map[string]string
+
+func (r VTRow) String() string {
+	var sb strings.Builder
+	keys := []string{}
+	for k := range r {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	for _, k := range keys {
+		v := r[k]
+		if len(v) > 384 {
+			v = v[0:384] + "..."
+		}
+		sb.WriteString(fmt.Sprintf("> VT.%s: %s\n", k, v))
+	}
+
+	return strings.TrimSpace(sb.String())
+}
 
 var vtDumbCache = map[string]*vt.Object{}
 
@@ -42,6 +64,7 @@ func vtInterpret(c *vt.Client, key string) (string, error) {
 	}
 
 	url := fmt.Sprintf("https://www.virustotal.com/gui/%s", strings.Replace(key, "files", "file", 1))
+	url = strings.Replace(url, "ip_addresses", "ip-address", 1)
 	lines := []string{}
 
 	vo, err := vtCacheGet(c, key)
@@ -53,22 +76,46 @@ func vtInterpret(c *vt.Client, key string) (string, error) {
 		return "not found", nil
 	}
 
+	h, err := vo.GetInt64("last_analysis_stats.harmless")
+	if err != nil {
+		return "", fmt.Errorf("last_analysis_stats.harmless: %w", err)
+	}
+
+	u, err := vo.GetInt64("last_analysis_stats.undetected")
+	if err != nil {
+		return "", fmt.Errorf("last_analysis_stats.undetected: %w", err)
+	}
+
 	m, err := vo.GetInt64("last_analysis_stats.malicious")
 	if err != nil {
 		return "", fmt.Errorf("last_analysis_stats.malicious: %w", err)
-	}
-
-	if m > 0 {
-		lines = append(lines, fmt.Sprintf("** LIKELY MALICIOUS (%d hits): %s **", m, url))
 	}
 
 	s, err := vo.GetInt64("last_analysis_stats.suspicious")
 	if err != nil {
 		return "", fmt.Errorf("last_analysis_stats.suspicious: %w", err)
 	}
-	if s > 0 {
-		lines = append(lines, fmt.Sprintf("** SUSPICIOUS (%d hits): %s **", s, url))
+
+	switch {
+	case m > 3:
+		lines = append(lines, fmt.Sprintf("*MALICIOUS* (%d hits)*: %s", m, url))
+	case m > 1:
+		lines = append(lines, fmt.Sprintf("*Possibly malicious* (%d hits)*: %s", m, url))
+	case s > 1:
+		lines = append(lines, fmt.Sprintf("*Possibly suspicious* (%d hits)*: %s", s, url))
+	case h > 3:
+		lines = append(lines, fmt.Sprintf("Harmless (%d hits): %s", h, url))
+	case u > 1:
+		lines = append(lines, fmt.Sprintf("Undetected (%d hits): %s", u, url))
+	default:
+		lines = append(lines, fmt.Sprintf("Unknown: %s", url))
 	}
+
+	attr, err := vo.Get("attributes")
+	if err != nil {
+		klog.Errorf("attributes: %v", err)
+	}
+	klog.Infof("ATTR: %+v", attr)
 
 	as, err := vo.GetString("attributes.as_owner")
 	if err == nil {
@@ -108,15 +155,11 @@ func vtInterpret(c *vt.Client, key string) (string, error) {
 		lines = append(lines, fmt.Sprintf("tags: %s", strings.Join(tags, " ")))
 	}
 
-	if len(lines) > 0 {
-		lines = append(lines, url)
-	}
-
 	return strings.Join(lines, "; "), nil
 }
 
-func vtMetadata(r Row, c *vt.Client) (Row, error) {
-	vr := Row{}
+func vtMetadata(r Row, c *vt.Client) (VTRow, error) {
+	vr := VTRow{}
 	if c == nil {
 		return vr, nil
 	}
