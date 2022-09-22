@@ -68,12 +68,14 @@ func main() {
 
 	webhookURL := os.Getenv("WEBHOOK_URL")
 	if *webhookURLFlag != "" {
+		klog.Infof("Using a webhook ...")
 		webhookURL = *webhookURLFlag
 	}
 
 	var vtClient *vt.Client
 	vtClient = nil
 	if key := os.Getenv("VIRUSTOTAL_KEY"); key != "" {
+		klog.Infof("Setting up VirusTotal client...")
 		vtClient = vt.NewClient(key)
 	}
 

@@ -123,7 +123,6 @@ func vtInterpret(c *vt.Client, key string) (string, error) {
 
 	lines = append(lines, summary)
 
-	net := ""
 	as, err := vo.GetString("as_owner")
 	if err != nil {
 		klog.Errorf("as_owner: %v", err)
@@ -135,7 +134,7 @@ func vtInterpret(c *vt.Client, key string) (string, error) {
 	}
 
 	if as != "" {
-		net = fmt.Sprintf("Net: %s [%s] ", as, co)
+		summary = fmt.Sprintf(" %s [%s] ", summary, co)
 	}
 
 	sub, err := vo.GetStringSlice("last_https_certificate.extensions.subject_alternative_name")
@@ -143,10 +142,11 @@ func vtInterpret(c *vt.Client, key string) (string, error) {
 		klog.Errorf("last_https_certificate.subject: %v", err)
 	}
 
+	certs := ""
 	if len(sub) > 0 {
-		net = fmt.Sprintf("%sCerts: %s", net, strings.Join(sub, ","))
+		certs = fmt.Sprintf("Certs: %s", strings.Join(sub, ","))
 	}
-	lines = append(lines, net)
+	lines = append(lines, certs)
 
 	return strings.Join(lines, "\n>   "), nil
 }
