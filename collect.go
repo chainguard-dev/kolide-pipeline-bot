@@ -70,7 +70,6 @@ func (r Row) String() string {
 		}
 
 		if sinceBreak > 100 || (sinceBreak > 0 && (len(text)+sinceBreak) > 100) {
-			klog.Infof("[%d/%d] breaking before %s", sinceBreak, len(text), text)
 			sb.WriteString("\n> ")
 			sinceBreak = len(text)
 		} else {

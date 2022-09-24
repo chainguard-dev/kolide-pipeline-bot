@@ -24,7 +24,7 @@ func (r VTRow) String() string {
 		if len(v) > 384 {
 			v = v[0:384] + "..."
 		}
-		sb.WriteString(fmt.Sprintf("> VT.%s: %s\n", k, v))
+		sb.WriteString(fmt.Sprintf("> %s: %s\n", k, v))
 	}
 
 	return strings.TrimSpace(sb.String())
@@ -73,7 +73,7 @@ func vtInterpret(c *vt.Client, key string) (string, error) {
 	}
 
 	if vo == nil {
-		return "not found", nil
+		return fmt.Sprintf("%s not found", key), nil
 	}
 
 	tags, err := vo.GetStringSlice("tags")
@@ -121,8 +121,6 @@ func vtInterpret(c *vt.Client, key string) (string, error) {
 		summary = fmt.Sprintf("%s unknown: %s", summary, url)
 	}
 
-	lines = append(lines, summary)
-
 	as, err := vo.GetString("as_owner")
 	if err != nil {
 		klog.Errorf("as_owner: %v", err)
@@ -137,6 +135,8 @@ func vtInterpret(c *vt.Client, key string) (string, error) {
 		summary = fmt.Sprintf(" %s [%s] ", summary, co)
 	}
 
+	lines = append(lines, summary)
+
 	sub, err := vo.GetStringSlice("last_https_certificate.extensions.subject_alternative_name")
 	if err != nil {
 		klog.Errorf("last_https_certificate.subject: %v", err)
@@ -144,11 +144,11 @@ func vtInterpret(c *vt.Client, key string) (string, error) {
 
 	certs := ""
 	if len(sub) > 0 {
-		certs = fmt.Sprintf("Certs: %s", strings.Join(sub, ","))
+		certs = fmt.Sprintf("certs: %s", strings.Join(sub, ","))
 	}
 	lines = append(lines, certs)
 
-	return strings.Join(lines, "\n>   "), nil
+	return strings.Join(lines, " / "), nil
 }
 
 func vtMetadata(r Row, c *vt.Client) (VTRow, error) {

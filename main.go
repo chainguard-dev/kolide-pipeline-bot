@@ -97,6 +97,7 @@ func main() {
 
 	rows := getRows(ctx, bucket, bucketPrefix, cutoff, vtClient)
 	klog.Infof("collected %d rows", len(rows))
+	notifier := NewNotifier()
 
 	total := map[string]int{}
 
@@ -106,7 +107,7 @@ func main() {
 			klog.Warningf("notification overflow for %s (%d), will not notify for: %s", r.Kind, total[r.Kind], r.Row)
 			continue
 		}
-		if err := notify(webhookURL, r); err != nil {
+		if err := notifier.Notify(webhookURL, r); err != nil {
 			klog.Errorf("notify error: %v", err)
 		}
 	}

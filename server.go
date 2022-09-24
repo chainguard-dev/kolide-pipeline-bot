@@ -17,9 +17,10 @@ func Serve(_ context.Context, sc *Config) {
 		bucket:            sc.Bucket,
 		prefix:            sc.Prefix,
 		webhookURL:        sc.WebhookURL,
+		notifier:          NewNotifier(),
 		lastRefresh:       sc.Cutoff,
 		maxNoticesPerKind: sc.MaxNoticesPerKind,
-		notified:          map[string]bool{},
+		lastNotification:  map[string]time.Time{},
 		vtc:               sc.VirusTotalClient,
 	}
 	http.HandleFunc("/refreshz", s.Refresh())
@@ -46,8 +47,9 @@ type Server struct {
 	bucket            *storage.BucketHandle
 	prefix            string
 	webhookURL        string
+	notifier          Notifier
 	lastRefresh       time.Time
-	notified          map[string]bool
+	lastNotification  map[string]time.Time
 	maxNoticesPerKind int
 	vtc               *vt.Client
 }
@@ -70,16 +72,11 @@ func (s *Server) Refresh() http.HandlerFunc {
 				continue
 			}
 
-			msg := r.Row.String()
-			if s.notified[msg] {
-				klog.Infof("skipping duplicate message: %s", msg)
-				continue
-			}
-			if err := notify(s.webhookURL, r); err != nil {
+			if err := s.notifier.Notify(s.webhookURL, r); err != nil {
 				klog.Errorf("notify error: %v", err)
 				continue
 			}
-			s.notified[msg] = true
+
 		}
 
 		w.WriteHeader(http.StatusOK)
