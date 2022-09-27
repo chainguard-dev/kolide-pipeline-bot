@@ -19,7 +19,7 @@ var (
 	fuzzyDateIntro = regexp.MustCompile(` at \d+ \w+ \d+.*`)
 
 	// Suppress duplicate messages within this time period
-	maxDupeTime = time.Hour * 6
+	maxDupeTime = time.Hour * 13
 )
 
 func NewNotifier() Notifier {
