@@ -1,10 +1,10 @@
-# kolide-pipeline-notifier
+# osquery-diff-notify
 
-Send notifications when Kolide Pipeline outputs change
+Send notifications from osquery differential logs, such as those output by Kolide.
 
 ## Features
 
-* Support for Kolide Differential Logs output via the Log Pipeline
+* Support for osquery differential logs
 * Rich Slack notifications
 * Google Cloud Storage
 * CLI and HTTP server modes
@@ -27,7 +27,7 @@ gcloud auth application-default login
 Inspect output without sending notifications:
 
 ```shell
-kolide-pipeline-notifier \
+osquery-diff-notify \
   --bucket=your-kolide-logs \
   --prefix=kolide/results/threat_hunting \
   --max-age=8h
@@ -40,18 +40,18 @@ To send notifications, add your Slack `--webhook-url`
 This will run a web server, that will scan the bucket every time `/refreshz` is hit, as well as send notifications:
 
 ```shell
-kolide-pipeline-notifier \
-  --bucket=your-kolide-logs \
+osquery-diff-notify \
+  --bucket=your-osquery-logs \
   --prefix=kolide/results/threat_hunting \
   --webhook-url=https://hooks.slack.com/services/oaeuSAOENTU/OESUNTOEU \
   --serve
 ```
 
-This allows the kolide-pipeline-notifier to be run in environments that assume an HTTP frontend, such as Google Cloud Run. You can then use a scheduler service to hit `/refreshz` as often as you want to poll for results.
+This allows the osquery-diff-notify to be run in environments that assume an HTTP frontend, such as Google Cloud Run. You can then use a scheduler service to hit `/refreshz` as often as you want to poll for results.
 
 ## Environment Variables
 
-For your deployment, you may find it more useful to use environment variables than arguments. The `kolide-pipeline-notifier` supports a handful of them:
+For your deployment, you may find it more useful to use environment variables than arguments. The `osquery-diff-notify` supports a handful of them:
 
 * `PORT`
 * `BUCKET_NAME`
