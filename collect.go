@@ -89,7 +89,7 @@ type CollectConfig struct {
 }
 
 func getRows(ctx context.Context, bucket *storage.BucketHandle, vtc *vt.Client, cc *CollectConfig) []DecoratedRow {
-	klog.Infof("querying bucket for items matching prefix %q ...", cc.Prefix)
+	klog.Infof("finding items matching: %+v ...", cc)
 	it := bucket.Objects(ctx, &storage.Query{Prefix: cc.Prefix})
 	lastKind := ""
 

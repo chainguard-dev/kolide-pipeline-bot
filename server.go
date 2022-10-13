@@ -56,7 +56,10 @@ func (s *Server) Refresh() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		klog.Infof("%s: %s %s", r.RemoteAddr, r.Method, r.URL)
 		duration := time.Since(s.lastRefresh)
-		s.collectConfig.Cutoff = s.lastRefresh
+		if s.lastRefresh.After(s.collectConfig.Cutoff) {
+			klog.Infof("Updating query cutoff time to last refresh: %s", s.lastRefresh)
+			s.collectConfig.Cutoff = s.lastRefresh
+		}
 
 		rows := getRows(r.Context(), s.bucket, s.vtc, s.collectConfig)
 		klog.Infof("collected %d rows", len(rows))

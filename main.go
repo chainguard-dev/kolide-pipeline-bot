@@ -68,6 +68,11 @@ func main() {
 		bucketPrefix = *prefixFlag
 	}
 
+	excludeSubDirs := os.Getenv("EXCLUDE_SUBDIRS")
+	if *excludeSubDirsFlag != "" {
+		excludeSubDirs = *excludeSubDirsFlag
+	}
+
 	webhookURL := os.Getenv("WEBHOOK_URL")
 	if *webhookURLFlag != "" {
 		klog.Infof("Using a webhook ...")
@@ -81,7 +86,7 @@ func main() {
 		vtClient = vt.NewClient(key)
 	}
 
-	cc := &CollectConfig{Prefix: bucketPrefix, ExcludeSubdirs: strings.Split(*excludeSubDirsFlag, ","), Cutoff: cutoff}
+	cc := &CollectConfig{Prefix: bucketPrefix, ExcludeSubdirs: strings.Split(excludeSubDirs, ","), Cutoff: cutoff}
 
 	if *serveFlag {
 		port := os.Getenv("PORT")
