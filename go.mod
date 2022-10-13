@@ -4,6 +4,9 @@ go 1.19
 
 require (
 	cloud.google.com/go/storage v1.26.0
+	github.com/VirusTotal/vt-go v0.0.0-20220413144842-e010bf48aaee
+	github.com/mergestat/timediff v0.0.3
+	github.com/multiplay/go-slack v0.0.0-20220428123529-0762aee71fe3
 	google.golang.org/api v0.94.0
 	k8s.io/klog/v2 v2.70.1
 )
@@ -12,7 +15,6 @@ require (
 	cloud.google.com/go v0.102.1 // indirect
 	cloud.google.com/go/compute v1.7.0 // indirect
 	cloud.google.com/go/iam v0.3.0 // indirect
-	github.com/VirusTotal/vt-go v0.0.0-20220413144842-e010bf48aaee // indirect
 	github.com/go-logr/logr v1.2.0 // indirect
 	github.com/golang/groupcache v0.0.0-20200121045136-8c9f03a8e57e // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
@@ -20,8 +22,6 @@ require (
 	github.com/google/uuid v1.3.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.1.0 // indirect
 	github.com/googleapis/gax-go/v2 v2.4.0 // indirect
-	github.com/mergestat/timediff v0.0.3 // indirect
-	github.com/multiplay/go-slack v0.0.0-20220428123529-0762aee71fe3 // indirect
 	github.com/thedevsaddam/gojsonq/v2 v2.5.2 // indirect
 	go.opencensus.io v0.23.0 // indirect
 	golang.org/x/net v0.0.0-20220624214902-1bab6f366d9e // indirect

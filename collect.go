@@ -82,9 +82,15 @@ func (r Row) String() string {
 	return strings.TrimSpace(sb.String() + kb.String())
 }
 
-func getRows(ctx context.Context, bucket *storage.BucketHandle, prefix string, cutoff time.Time, vtc *vt.Client) []DecoratedRow {
-	klog.Infof("querying bucket for items matching prefix %q ...", prefix)
-	it := bucket.Objects(ctx, &storage.Query{Prefix: prefix})
+type CollectConfig struct {
+	Prefix         string
+	Cutoff         time.Time
+	ExcludeSubdirs []string
+}
+
+func getRows(ctx context.Context, bucket *storage.BucketHandle, vtc *vt.Client, cc *CollectConfig) []DecoratedRow {
+	klog.Infof("querying bucket for items matching prefix %q ...", cc.Prefix)
+	it := bucket.Objects(ctx, &storage.Query{Prefix: cc.Prefix})
 	lastKind := ""
 
 	rows := []DecoratedRow{}
@@ -100,10 +106,19 @@ func getRows(ctx context.Context, bucket *storage.BucketHandle, prefix string, c
 			break
 		}
 
-		if attrs.Created.Before(cutoff) {
+		matched := false
+		for _, d := range cc.ExcludeSubdirs {
+			if strings.Contains(attrs.Name, "/"+d+"/") {
+				matched = true
+				break
+			}
+		}
+
+		if matched || attrs.Created.Before(cc.Cutoff) {
 			continue
 		}
 
+		klog.Infof("reading %s ...", attrs.Name)
 		rc, err := bucket.Object(attrs.Name).NewReader(ctx)
 		if err != nil {
 			klog.Fatal(err)

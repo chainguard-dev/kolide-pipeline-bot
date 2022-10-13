@@ -14,11 +14,10 @@ import (
 
 func Serve(_ context.Context, sc *Config) {
 	s := &Server{
+		collectConfig:     sc.CollectConfig,
 		bucket:            sc.Bucket,
-		prefix:            sc.Prefix,
 		webhookURL:        sc.WebhookURL,
 		notifier:          NewNotifier(),
-		lastRefresh:       sc.Cutoff,
 		maxNoticesPerKind: sc.MaxNoticesPerKind,
 		lastNotification:  map[string]time.Time{},
 		vtc:               sc.VirusTotalClient,
@@ -35,9 +34,8 @@ func Serve(_ context.Context, sc *Config) {
 
 type Config struct {
 	Bucket            *storage.BucketHandle
-	Prefix            string
+	CollectConfig     *CollectConfig
 	WebhookURL        string
-	Cutoff            time.Time
 	Addr              string
 	MaxNoticesPerKind int
 	VirusTotalClient  *vt.Client
@@ -45,7 +43,7 @@ type Config struct {
 
 type Server struct {
 	bucket            *storage.BucketHandle
-	prefix            string
+	collectConfig     *CollectConfig
 	webhookURL        string
 	notifier          Notifier
 	lastRefresh       time.Time
@@ -58,8 +56,9 @@ func (s *Server) Refresh() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		klog.Infof("%s: %s %s", r.RemoteAddr, r.Method, r.URL)
 		duration := time.Since(s.lastRefresh)
+		s.collectConfig.Cutoff = s.lastRefresh
 
-		rows := getRows(r.Context(), s.bucket, s.prefix, s.lastRefresh, s.vtc)
+		rows := getRows(r.Context(), s.bucket, s.vtc, s.collectConfig)
 		klog.Infof("collected %d rows", len(rows))
 		// lol race
 		s.lastRefresh = time.Now()

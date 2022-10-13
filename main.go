@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"cloud.google.com/go/storage"
@@ -31,12 +32,13 @@ import (
 )
 
 var (
-	bucketFlag     = flag.String("bucket", "", "Bucket to query")
-	prefixFlag     = flag.String("prefix", "", "directory of contents to query")
-	webhookURLFlag = flag.String("webhook-url", "", "Slack webhook URL to hit")
-	serveFlag      = flag.Bool("serve", false, "")
-	maxAgeFlag     = flag.Duration("max-age", 3*time.Minute, "Maximum age of events to include")
-	maxNoticesFlag = flag.Int("max-notices-per-kind", 5, "Maximum notices per kind (spam reduction)")
+	bucketFlag         = flag.String("bucket", "", "Bucket to query")
+	prefixFlag         = flag.String("prefix", "", "directory of contents to query")
+	excludeSubDirsFlag = flag.String("exclude-subdirs", "", "exclude alerts for this comma-separated list of subdirectories")
+	webhookURLFlag     = flag.String("webhook-url", "", "Slack webhook URL to hit")
+	serveFlag          = flag.Bool("serve", false, "")
+	maxAgeFlag         = flag.Duration("max-age", 3*time.Minute, "Maximum age of events to include")
+	maxNoticesFlag     = flag.Int("max-notices-per-kind", 5, "Maximum notices per kind (spam reduction)")
 )
 
 func main() {
@@ -79,6 +81,8 @@ func main() {
 		vtClient = vt.NewClient(key)
 	}
 
+	cc := &CollectConfig{Prefix: bucketPrefix, ExcludeSubdirs: strings.Split(*excludeSubDirsFlag, ","), Cutoff: cutoff}
+
 	if *serveFlag {
 		port := os.Getenv("PORT")
 		if port == "" {
@@ -86,16 +90,15 @@ func main() {
 		}
 		Serve(ctx, &Config{
 			Bucket:            bucket,
-			Prefix:            bucketPrefix,
+			CollectConfig:     cc,
 			WebhookURL:        webhookURL,
-			Cutoff:            cutoff,
 			Addr:              fmt.Sprintf(":%s", port),
 			MaxNoticesPerKind: *maxNoticesFlag,
 			VirusTotalClient:  vtClient,
 		})
 	}
 
-	rows := getRows(ctx, bucket, bucketPrefix, cutoff, vtClient)
+	rows := getRows(ctx, bucket, vtClient, cc)
 	klog.Infof("collected %d rows", len(rows))
 	notifier := NewNotifier()
 
