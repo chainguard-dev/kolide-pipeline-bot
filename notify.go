@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mergestat/timediff"
 	"github.com/multiplay/go-slack/chat"
 	"github.com/multiplay/go-slack/webhook"
 	"k8s.io/klog/v2"
@@ -56,18 +55,30 @@ func mungeMsg(msg string) string {
 
 func (n *Notifier) Notify(url string, row DecoratedRow) error {
 	t := time.Unix(row.UNIXTime, 0)
-	diff := strings.Replace(timediff.TimeDiff(t), " ago", " delay", 1)
-	text := fmt.Sprintf("*%s* on %s at %s (%s):\n> %s", row.Kind, row.Decorations["computer_name"], t.Format(time.RFC822), diff, row.Row)
+
+	id := row.Decorations["hardware_serial"]
+	if row.Decorations["device_owner_email"] != "" {
+		id, _, _ = strings.Cut(row.Decorations["device_owner_email"], "@")
+		id = id + "@"
+	}
+
+	klog.Infof("decorations: %+v", row.Decorations)
+
+	text := fmt.Sprintf("*%s* on %s at %s (%s):\n> %s", row.Kind, row.Decorations["computer_name"], t.Format(time.RFC822), id, row.Row)
 	if len(row.VirusTotal) > 0 {
 		text = text + "\n\n" + row.VirusTotal.String()
 	}
 
 	if n.recentDupe(text) {
-		klog.Infof("skipping recent duplicate message: %s", text)
+		el := text
+		if len(el) > 160 {
+			el = el[0:160] + "..."
+		}
+		klog.Infof("skipping recent duplicate message: %s", el)
 		return nil
 	}
 
-	klog.Infof("NOTIFY: %s", text)
+	klog.Infof("### NOTIFY: %s", text)
 	n.saveMsg(text)
 
 	if url == "" {

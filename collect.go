@@ -17,10 +17,17 @@ import (
 )
 
 type OutFile struct {
-	DiffResults diffResults       `json:"diffResults"`
-	Name        string            `json:"name"`
-	Decorations map[string]string `json:"decorations"`
-	UNIXTime    int64             `json:"unixTime"`
+	DiffResults       diffResults       `json:"diffResults"`
+	Name              string            `json:"name"`
+	Decorations       map[string]string `json:"decorations"`
+	KolideDecorations KolideDecorations `json:"kolide_decorations"`
+	UNIXTime          int64             `json:"unixTime"`
+}
+
+type KolideDecorations struct {
+	DeviceOwnerEmail  string `json:"device_owner_email"`
+	DeviceDisplayName string `json:"device_display_name"`
+	DeviceOwnerType   string `json:"device_owner_type"`
 }
 
 type diffResults struct {
@@ -57,7 +64,7 @@ func (r Row) String() string {
 			if kb.Len() == 0 {
 				kb.WriteString("\n\n")
 			}
-			kb.WriteString(fmt.Sprintf("> %s: %q\n", k, v))
+			kb.WriteString(fmt.Sprintf("> %s: '%s'\n", k, v))
 			continue
 		}
 
@@ -66,7 +73,7 @@ func (r Row) String() string {
 		}
 		text := fmt.Sprintf(`%s:%s `, k, v)
 		if strings.Contains(v, " ") || strings.Contains(v, ":") {
-			text = fmt.Sprintf(`%s:%q `, k, v)
+			text = fmt.Sprintf(`%s:'%s' `, k, v)
 		}
 
 		if sinceBreak > 100 || (sinceBreak > 0 && (len(text)+sinceBreak) > 100) {
@@ -129,17 +136,19 @@ func getRows(ctx context.Context, bucket *storage.BucketHandle, vtc *vt.Client, 
 			klog.Fatal(err)
 		}
 
-		out := &OutFile{}
-		err = json.Unmarshal(body, out)
+		// Inconsistency warning: we've seen records returned as an array and as a struct
+		out := OutFile{}
+		err = json.Unmarshal(body, &out)
+
+		// Try again by decoding it as an array
 		if err != nil {
-			out2 := []OutFile{}
-			err2 := json.Unmarshal(body, &out2)
-			if err2 != nil {
-				klog.Errorf("unmarshal(%s): %v\nsecond attempt: %v", body, err, err2)
+			outArr := []OutFile{}
+			errArr := json.Unmarshal(body, &outArr)
+			if errArr != nil {
+				klog.Errorf("unmarshal(%s): %v\nsecond attempt: %v", body, err, errArr)
 				continue
 			}
-			klog.Warningf("Recovered array-based body (%d elements)", len(out2))
-			out = &out2[0]
+			out = outArr[0]
 		}
 
 		kind := filepath.Base(filepath.Dir(filepath.Dir(attrs.Name)))
@@ -149,25 +158,37 @@ func getRows(ctx context.Context, bucket *storage.BucketHandle, vtc *vt.Client, 
 		}
 
 		for _, r := range out.DiffResults.Added {
-			msg := fmt.Sprintf("%s/%s: %s", kind, out.Decorations["computer_name"], r)
+			msg := fmt.Sprintf("%s/%s (%+v): %s", kind, out.Decorations["computer_name"], out.KolideDecorations, r)
 			if !seen[msg] {
-				klog.Infof(msg)
+				klog.Infof("collecting: %s", msg)
 				vt, err := vtMetadata(r, vtc)
 				if err != nil {
 					klog.Errorf("failed to fetch VT metadata: %v", err)
 				}
-
-				rows = append(rows, DecoratedRow{
+				row := DecoratedRow{
 					Decorations: out.Decorations,
 					UNIXTime:    out.UNIXTime,
 					Kind:        kind,
 					Row:         r,
 					VirusTotal:  vt,
-				})
+				}
+
+				if out.KolideDecorations.DeviceOwnerEmail != "" {
+					row.Decorations["device_owner_email"] = out.KolideDecorations.DeviceOwnerEmail
+				}
+				if out.KolideDecorations.DeviceOwnerType != "" {
+					row.Decorations["device_owner_type"] = out.KolideDecorations.DeviceOwnerType
+				}
+				if out.KolideDecorations.DeviceOwnerEmail != "" {
+					row.Decorations["device_display_name"] = out.KolideDecorations.DeviceDisplayName
+				}
+
+				rows = append(rows, row)
 			}
 			seen[msg] = true
 		}
 	}
 
+	klog.Infof("collection complete: %d rows found", len(rows))
 	return rows
 }
