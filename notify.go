@@ -24,11 +24,66 @@ var (
 func NewNotifier() Notifier {
 	return Notifier{
 		lastNotification: map[string]time.Time{},
+		threads:          map[string][]*Thread{},
 	}
 }
 
 type Notifier struct {
 	lastNotification map[string]time.Time
+	// map of username -> Thread
+	threads map[string][]*Thread
+}
+
+type Thread struct {
+	Updated time.Time
+	Paths   map[string]bool
+	TS      string
+}
+
+// findThread finds the most relevant thread to follow-up on, if any
+func (n *Notifier) findThread(user string, path string) *Thread {
+	var mostRecent *Thread
+	var samePath *Thread
+
+	for _, t := range n.threads[user] {
+		t := t
+		if t.Paths[path] {
+			if samePath == nil || samePath.Updated.Before(t.Updated) {
+				samePath = t
+			}
+		}
+		if mostRecent == nil || mostRecent.Updated.Before(t.Updated) {
+			mostRecent = t
+		}
+	}
+
+	// user has never had a thread
+	if mostRecent == nil {
+		return nil
+	}
+
+	// If the user has a thread within the last hour, follow-up there
+	// If not, use the last known thread with the same path.
+	if time.Since(mostRecent.Updated) < time.Duration(1*time.Hour) {
+		return mostRecent
+	}
+
+	return samePath
+}
+
+// saveThread saves a thread for later follow-up
+func (n *Notifier) saveThread(user string, path string, ts string) {
+	found := n.findThread(user, path)
+	if found == nil {
+		t := &Thread{Updated: time.Now(), Paths: map[string]bool{path: true}, TS: ts}
+		n.threads[user] = append(n.threads[user], t)
+		klog.Infof("added thread for %s/%s: %+v", user, path, n, t)
+		return
+	}
+
+	found.Paths[path] = true
+	found.Updated = time.Now()
+	klog.Infof("updated thread for %s/%s: %+v", user, path, n, found)
 }
 
 // isDuplicate checks if the message is an exact duplicate or a fuzzy duplicate
@@ -62,6 +117,16 @@ func (n *Notifier) Notify(url string, row DecoratedRow) error {
 		id = id + "@"
 	}
 
+	device := row.Decorations["computer_name"]
+	if _, ok := n.threads[device]; !ok {
+		n.threads[device] = []*Thread{}
+	}
+
+	path := row.Row["path"]
+	if path == "" {
+		path = row.Row["child_path"]
+	}
+
 	klog.Infof("decorations: %+v", row.Decorations)
 
 	text := fmt.Sprintf("*%s* on %s at %s (%s):\n> %s", row.Kind, row.Decorations["computer_name"], t.Format(time.RFC822), id, row.Row)
@@ -88,11 +153,20 @@ func (n *Notifier) Notify(url string, row DecoratedRow) error {
 	c := webhook.New(url)
 	m := &chat.Message{Text: text}
 
+	if t := n.findThread(device, path); t != nil {
+		klog.Infof("found thread for %s/%s: %s", device, path, t)
+		m.ThreadTS = t.TS
+	}
+
 	klog.Infof("Sending to %s: %+v", url, c)
 	resp, err := m.Send(c)
+	if resp.Timestamp != "" {
+		n.saveThread(device, path, resp.Timestamp)
+	}
 
 	if resp.Message != nil || resp.Warning != "" || resp.Error != "" {
 		klog.Infof("response: %+v err=%v", resp, err)
 	}
+
 	return err
 }
