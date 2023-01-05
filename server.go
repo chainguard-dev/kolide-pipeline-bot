@@ -46,7 +46,7 @@ type Server struct {
 	collectConfig     *CollectConfig
 	webhookURL        string
 	notifier          Notifier
-	lastRefresh       time.Time
+	lastCollection    time.Time
 	lastNotification  map[string]time.Time
 	maxNoticesPerKind int
 	vtc               *vt.Client
@@ -55,20 +55,23 @@ type Server struct {
 func (s *Server) Refresh() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		klog.Infof("%s: %s %s", r.RemoteAddr, r.Method, r.URL)
-		duration := time.Since(s.lastRefresh)
-		if s.lastRefresh.After(s.collectConfig.Cutoff) {
-			klog.Infof("Updating query cutoff time to last refresh: %s", s.lastRefresh)
-			s.collectConfig.Cutoff = s.lastRefresh
+		duration := time.Since(s.lastCollection)
+		if s.lastCollection.After(s.collectConfig.Cutoff) {
+			// Go backwards to avoid TOCTOU races
+			s.collectConfig.Cutoff = s.lastCollection.Add(time.Second * -1)
+			klog.Infof("Using %s as new cutoff time based on the previous refresh", s.collectConfig.Cutoff)
 		}
 
 		refreshStartedAt := time.Now()
 		rows := getRows(r.Context(), s.bucket, s.vtc, s.collectConfig)
+		klog.Infof("collected %d rows", len(rows))
 
 		// Record the last refresh as the time just before getRows() is called,
 		// so that future runs don't miss records written during getRows() execution
-		s.lastRefresh = refreshStartedAt
-
-		klog.Infof("collected %d rows", len(rows))
+		if len(rows) > 0 {
+			s.lastCollection = refreshStartedAt
+			klog.Infof("Recording last successful refresh as %s", refreshStartedAt)
+		}
 
 		total := map[string]int{}
 
