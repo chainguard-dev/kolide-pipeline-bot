@@ -61,10 +61,15 @@ func (s *Server) Refresh() http.HandlerFunc {
 			s.collectConfig.Cutoff = s.lastRefresh
 		}
 
+		refreshStartedAt := time.Now()
 		rows := getRows(r.Context(), s.bucket, s.vtc, s.collectConfig)
+
+		// Record the last refresh as the time just before getRows() is called,
+		// so that future runs don't miss records written during getRows() execution
+		s.lastRefresh = refreshStartedAt
+
 		klog.Infof("collected %d rows", len(rows))
-		// lol race
-		s.lastRefresh = time.Now()
+
 		total := map[string]int{}
 
 		for _, r := range rows {
