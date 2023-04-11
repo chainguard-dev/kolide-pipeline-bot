@@ -21,7 +21,7 @@ var (
 	nonAlpha       = regexp.MustCompile(`\W+`)
 
 	// Suppress duplicate messages within this time period
-	maxDupeTime = time.Hour * 24 * 2
+	maxDupeTime = time.Hour * 24 * 3
 	// Follow-up to threads that are within this time period
 	maxRelatedThreadMatch   = time.Hour * 24 * 1
 	maxUnrelatedThreadMatch = time.Hour
@@ -158,7 +158,7 @@ func (n *Notifier) saveThread(user string, row DecoratedRow, ts string) {
 func (n *Notifier) recentDupe(msg string) bool {
 	munged := mungeMsg(msg)
 	if n.lastNotification[munged].IsZero() {
-		klog.Infof("no dupe for %s", munged)
+		klog.V(1).Infof("no dupe for %s", munged)
 		return false
 	}
 	klog.Infof("found dupe @ %s for %s", n.lastNotification[munged], munged)
@@ -168,7 +168,7 @@ func (n *Notifier) recentDupe(msg string) bool {
 // saveMsg saves messages for the duplicate detector
 func (n *Notifier) saveMsg(msg string) {
 	munged := mungeMsg(msg)
-	klog.Infof("saving munged: %s", munged)
+	klog.V(1).Infof("saving munged: %s", munged)
 	n.lastNotification[munged] = time.Now()
 }
 
@@ -205,11 +205,7 @@ func (n *Notifier) Notify(url string, row DecoratedRow) error {
 	}
 
 	if n.recentDupe(text) {
-		el := text
-		if len(el) > 160 {
-			el = el[0:160] + "..."
-		}
-		klog.Infof("skipping recent dupe: %s", el)
+		klog.Infof("suppressing recent dupe: %s", text)
 		return nil
 	}
 
@@ -238,6 +234,7 @@ func (n *Notifier) Notify(url string, row DecoratedRow) error {
 
 	klog.Infof("Sending to %s: %+v", url, c)
 	resp, err := m.Send(c)
+	klog.Infof("response: %+v", resp)
 	if resp.Timestamp != "" {
 		n.saveThread(device, row, resp.Timestamp)
 	}
