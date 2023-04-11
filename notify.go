@@ -12,13 +12,44 @@ import (
 )
 
 var (
-	fuzzyIPValue   = regexp.MustCompile(`([\/:])\d+\.[\d\.]+`)
+	fuzzyIPValue = regexp.MustCompile(`\d+\.[\d\.]+`)
+	// good enough
+	fuzzyIPv6Value = regexp.MustCompile(`'*[0-9a-f]+:[0-9a-f]+:[0-9a-f]+:[[0-9a-f:]+'*`)
 	fuzzyAlphaNum  = regexp.MustCompile(`\w+\d+[a-zA-Z]+[\w_-]+`)
-	fuzzyNumValue  = regexp.MustCompile(`(:)\d+`)
+	fuzzyNumValue  = regexp.MustCompile(`\d+`)
 	fuzzyDateIntro = regexp.MustCompile(` at \d+ \w+ \d+.*`)
+	nonAlpha       = regexp.MustCompile(`\W+`)
 
 	// Suppress duplicate messages within this time period
-	maxDupeTime = time.Hour * 13
+	maxDupeTime = time.Hour * 24 * 2
+	// Follow-up to threads that are within this time period
+	maxRelatedThreadMatch   = time.Hour * 24 * 1
+	maxUnrelatedThreadMatch = time.Hour
+
+	// Keys to use for finding related threads
+	relateKeys = []string{
+		"path",
+		"child_path",
+		"p0_path",
+		"p0_cmd",
+		"cmd",
+		"cmdline",
+		"ctime",
+		"mtime",
+		"start_time",
+		"exception_key",
+		"p0_sha256",
+		"child_sha256",
+		"child_cmd",
+		"parent",
+		"p0_parent",
+		"sha256",
+		"id",
+		"name",
+		"remote_address",
+		"pid",
+		"p0_pid",
+	}
 )
 
 func NewNotifier() Notifier {
@@ -35,76 +66,120 @@ type Notifier struct {
 }
 
 type Thread struct {
-	Updated time.Time
-	Paths   map[string]bool
-	TS      string
+	Updated   time.Time
+	Relations map[string]string
+	Kinds     map[string]bool
+	ID        string
 }
 
-// findThread finds the most relevant thread to follow-up on, if any
-func (n *Notifier) findThread(user string, path string) *Thread {
-	var mostRecent *Thread
-	var samePath *Thread
+// rowRelations picks out the row columns important for determining if a thread is related
+func rowRelations(row DecoratedRow) map[string]string {
+	relations := map[string]string{}
+	for _, r := range relateKeys {
+		if row.Row[r] != "" {
+			relations[r] = row.Row[r]
+		}
+	}
+	relations["kind"] = row.Kind
+	return relations
+}
 
+// findThread finds the most relevant thread to follow-up on
+func (n *Notifier) findThread(user string, relations map[string]string) (*Thread, []string) {
+	var mostRecent *Thread
+	var related *Thread
+	var via []string
+
+	klog.V(1).Infof("finding thread for %s matching %+v", user, relations)
+	// Rough logic:
+	//
+	// - prefer recent threads that contain the same path
+	// - fallback to recent threads that contain the same alert
+	// - fallback to very recent threads for the same user
 	for _, t := range n.threads[user] {
 		t := t
-		if t.Paths[path] {
-			if samePath == nil || samePath.Updated.Before(t.Updated) {
-				samePath = t
+		matches := []string{}
+
+		for k, v := range t.Relations {
+			for rk, rv := range relations {
+				if v != rv {
+					continue
+				}
+
+				matches = append(matches, fmt.Sprintf("%s=%s", k, rk))
 			}
 		}
+
+		if len(matches) > 0 && (related == nil || related.Updated.Before(t.Updated)) {
+			related = t
+			klog.V(1).Infof("newer thread via %s: %+v", matches, related)
+			via = matches
+		}
+
 		if mostRecent == nil || mostRecent.Updated.Before(t.Updated) {
 			mostRecent = t
 		}
 	}
 
-	// user has never had a thread
-	if mostRecent == nil {
-		return nil
+	if related != nil && time.Since(related.Updated) < maxRelatedThreadMatch {
+		return related, via
 	}
 
 	// If the user has a thread within the last hour, follow-up there
 	// If not, use the last known thread with the same path.
-	if time.Since(mostRecent.Updated) < time.Duration(1*time.Hour) {
-		return mostRecent
+	if mostRecent != nil && time.Since(mostRecent.Updated) < maxUnrelatedThreadMatch {
+		return mostRecent, []string{"recency"}
 	}
 
-	return samePath
+	return nil, nil
 }
 
 // saveThread saves a thread for later follow-up
-func (n *Notifier) saveThread(user string, path string, ts string) {
-	found := n.findThread(user, path)
+func (n *Notifier) saveThread(user string, row DecoratedRow, ts string) {
+	relations := rowRelations(row)
+	found, via := n.findThread(user, relations)
 	if found == nil {
-		t := &Thread{Updated: time.Now(), Paths: map[string]bool{path: true}, TS: ts}
+		t := &Thread{Updated: time.Now(), Relations: relations, ID: ts}
 		n.threads[user] = append(n.threads[user], t)
-		klog.Infof("added thread for %s/%s: %+v", user, path, n, t)
+		klog.V(1).Infof("saved %s thread: %+v", user, t)
 		return
 	}
 
-	found.Paths[path] = true
 	found.Updated = time.Now()
-	klog.Infof("updated thread for %s/%s: %+v", user, path, n, found)
+	for k, v := range relations {
+		if found.Relations[k] != "" {
+			found.Relations[k] = v
+		}
+	}
+	klog.V(1).Infof("updated %s thread matched via %s: %+v", user, via, found)
 }
 
 // isDuplicate checks if the message is an exact duplicate or a fuzzy duplicate
 func (n *Notifier) recentDupe(msg string) bool {
 	munged := mungeMsg(msg)
-	klog.Infof("last notice: %s for %s", n.lastNotification[munged], munged)
+	if n.lastNotification[munged].IsZero() {
+		klog.Infof("no dupe for %s", munged)
+		return false
+	}
+	klog.Infof("found dupe @ %s for %s", n.lastNotification[munged], munged)
 	return time.Since(n.lastNotification[munged]) < maxDupeTime
 }
 
 // saveMsg saves messages for the duplicate detector
 func (n *Notifier) saveMsg(msg string) {
 	munged := mungeMsg(msg)
+	klog.Infof("saving munged: %s", munged)
 	n.lastNotification[munged] = time.Now()
 }
 
 // mungeMsg munges a message for the duplicate detector
 func mungeMsg(msg string) string {
-	new := fuzzyIPValue.ReplaceAllString(msg, "$1<ip>")
-	new = fuzzyAlphaNum.ReplaceAllString(new, "<alphanum>")
-	new = fuzzyNumValue.ReplaceAllString(new, "$1<num>")
+	new := fuzzyIPValue.ReplaceAllString(msg, "<ip>")
+	new = fuzzyIPv6Value.ReplaceAllString(new, "<ip>")
 	new = fuzzyDateIntro.ReplaceAllString(new, "<date>")
+	new = fuzzyAlphaNum.ReplaceAllString(new, "<alphanum>")
+	new = fuzzyNumValue.ReplaceAllString(new, "<num>")
+	new = nonAlpha.ReplaceAllString(new, " ")
 	return new
 }
 
@@ -122,12 +197,7 @@ func (n *Notifier) Notify(url string, row DecoratedRow) error {
 		n.threads[device] = []*Thread{}
 	}
 
-	path := row.Row["path"]
-	if path == "" {
-		path = row.Row["child_path"]
-	}
-
-	klog.Infof("decorations: %+v", row.Decorations)
+	klog.V(1).Infof("decorations: %+v", row.Decorations)
 
 	text := fmt.Sprintf("*%s* on %s at %s (%s):\n> %s", row.Kind, row.Decorations["computer_name"], t.Format(time.RFC822), id, row.Row)
 	if len(row.VirusTotal) > 0 {
@@ -139,29 +209,37 @@ func (n *Notifier) Notify(url string, row DecoratedRow) error {
 		if len(el) > 160 {
 			el = el[0:160] + "..."
 		}
-		klog.Infof("skipping recent duplicate message: %s", el)
+		klog.Infof("skipping recent dupe: %s", el)
 		return nil
 	}
 
-	klog.Infof("### NOTIFY: %s", text)
+	m := &chat.Message{Text: text}
+	relations := rowRelations(row)
+	thread, via := n.findThread(device, relations)
+
+	if thread != nil {
+		klog.Infof("found %s thread via %s: %+v", device, via, thread)
+		m.Text = m.Text + fmt.Sprintf("\n\n> related via %s", strings.Join(via, " "))
+		m.ThreadTS = thread.ID
+	} else {
+		klog.V(1).Infof("no threads for %s matching %+v", device, relations)
+	}
+
+	klog.Infof("### NOTIFY[%s]: %s", m.ThreadTS, m.Text)
 	n.saveMsg(text)
 
+	// fake threading
 	if url == "" {
+		n.saveThread(device, row, fmt.Sprintf("%d", time.Now().Unix()))
 		return nil
 	}
 
 	c := webhook.New(url)
-	m := &chat.Message{Text: text}
-
-	if t := n.findThread(device, path); t != nil {
-		klog.Infof("found thread for %s/%s: %s", device, path, t)
-		m.ThreadTS = t.TS
-	}
 
 	klog.Infof("Sending to %s: %+v", url, c)
 	resp, err := m.Send(c)
 	if resp.Timestamp != "" {
-		n.saveThread(device, path, resp.Timestamp)
+		n.saveThread(device, row, resp.Timestamp)
 	}
 
 	if resp.Message != nil || resp.Warning != "" || resp.Error != "" {

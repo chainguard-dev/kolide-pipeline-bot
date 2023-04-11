@@ -125,7 +125,7 @@ func getRows(ctx context.Context, bucket *storage.BucketHandle, vtc *vt.Client, 
 			continue
 		}
 
-		klog.Infof("reading %s ...", attrs.Name)
+		klog.V(1).Infof("reading %s ...", attrs.Name)
 		rc, err := bucket.Object(attrs.Name).NewReader(ctx)
 		if err != nil {
 			klog.Fatal(err)
