@@ -68,8 +68,8 @@ func (r Row) String() string {
 			continue
 		}
 
-		if len(v) > 384 {
-			v = v[0:384] + "..."
+		if len(v) > 768 {
+			v = v[0:768] + "..."
 		}
 		text := fmt.Sprintf(`%s:%s `, k, v)
 		if strings.Contains(v, " ") || strings.Contains(v, ":") {
@@ -125,7 +125,7 @@ func getRows(ctx context.Context, bucket *storage.BucketHandle, vtc *vt.Client, 
 			continue
 		}
 
-		klog.Infof("reading %s ...", attrs.Name)
+		klog.V(1).Infof("reading %s ...", attrs.Name)
 		rc, err := bucket.Object(attrs.Name).NewReader(ctx)
 		if err != nil {
 			klog.Fatal(err)

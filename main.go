@@ -12,9 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// [START storage_quickstart]
-
-// Sample storage-quickstart creates a Google Cloud Storage bucket.
+// Create Slack notifications for incoming osquery/Kolide events
 package main
 
 import (
@@ -28,6 +26,7 @@ import (
 
 	"cloud.google.com/go/storage"
 	"github.com/VirusTotal/vt-go"
+	"github.com/slack-go/slack"
 	"k8s.io/klog/v2"
 )
 
@@ -35,13 +34,14 @@ var (
 	bucketFlag         = flag.String("bucket", "", "Bucket to query")
 	prefixFlag         = flag.String("prefix", "", "directory of contents to query")
 	excludeSubDirsFlag = flag.String("exclude-subdirs", "", "exclude alerts for this comma-separated list of subdirectories")
-	webhookURLFlag     = flag.String("webhook-url", "", "Slack webhook URL to hit")
+	channelFlag        = flag.String("channel-id", "", "Slack channel to post to (required for replies)")
 	serveFlag          = flag.Bool("serve", false, "")
 	maxAgeFlag         = flag.Duration("max-age", 10*time.Minute, "Maximum age of events to include (for best use, use at least 2X your trigger time)")
 	maxNoticesFlag     = flag.Int("max-notices-per-kind", 5, "Maximum notices per kind (spam reduction)")
 )
 
 func main() {
+	klog.InitFlags(nil)
 	flag.Parse()
 
 	ctx := context.Background()
@@ -62,7 +62,6 @@ func main() {
 
 	// Creates a Bucket instance.
 	bucket := client.Bucket(bucketName)
-
 	bucketPrefix := os.Getenv("BUCKET_PREFIX")
 	if *prefixFlag != "" {
 		bucketPrefix = *prefixFlag
@@ -73,10 +72,24 @@ func main() {
 		excludeSubDirs = *excludeSubDirsFlag
 	}
 
-	webhookURL := os.Getenv("WEBHOOK_URL")
-	if *webhookURLFlag != "" {
-		klog.Infof("Using a webhook ...")
-		webhookURL = *webhookURLFlag
+	var s *slack.Client
+
+	token := os.Getenv("SLACK_ACCESS_TOKEN")
+	if token != "" {
+		klog.Infof("setting up slack client (%d byte token)", len(token))
+		s = slack.New(token)
+	} else {
+		klog.Infof("SLACK_ACCESS_TOKEN not set, won't actually post messages to Slack")
+	}
+
+	channel := os.Getenv("CHANNEL_ID")
+	if *channelFlag != "" {
+		channel = *channelFlag
+	}
+	if channel != "" {
+		klog.Infof("Posting to channel ID=%s ...", channel)
+	} else {
+		klog.Infof("No channel ID provided, threaded replies may not work.")
 	}
 
 	var vtClient *vt.Client
@@ -96,7 +109,8 @@ func main() {
 		Serve(ctx, &Config{
 			Bucket:            bucket,
 			CollectConfig:     cc,
-			WebhookURL:        webhookURL,
+			Channel:           channel,
+			SlackClient:       s,
 			Addr:              fmt.Sprintf(":%s", port),
 			MaxNoticesPerKind: *maxNoticesFlag,
 			VirusTotalClient:  vtClient,
@@ -115,7 +129,7 @@ func main() {
 			klog.Warningf("notification overflow for %s (%d), will not notify for: %s", r.Kind, total[r.Kind], r.Row)
 			continue
 		}
-		if err := notifier.Notify(webhookURL, r); err != nil {
+		if err := notifier.Notify(s, channel, r); err != nil {
 			klog.Errorf("notify error: %v", err)
 		}
 	}

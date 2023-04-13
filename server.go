@@ -9,6 +9,7 @@ import (
 
 	"cloud.google.com/go/storage"
 	"github.com/VirusTotal/vt-go"
+	"github.com/slack-go/slack"
 	"k8s.io/klog/v2"
 )
 
@@ -16,7 +17,8 @@ func Serve(_ context.Context, sc *Config) {
 	s := &Server{
 		collectConfig:     sc.CollectConfig,
 		bucket:            sc.Bucket,
-		webhookURL:        sc.WebhookURL,
+		slack:             sc.SlackClient,
+		channel:           sc.Channel,
 		notifier:          NewNotifier(),
 		maxNoticesPerKind: sc.MaxNoticesPerKind,
 		lastNotification:  map[string]time.Time{},
@@ -35,16 +37,18 @@ func Serve(_ context.Context, sc *Config) {
 type Config struct {
 	Bucket            *storage.BucketHandle
 	CollectConfig     *CollectConfig
-	WebhookURL        string
 	Addr              string
+	SlackClient       *slack.Client
+	Channel           string
 	MaxNoticesPerKind int
 	VirusTotalClient  *vt.Client
 }
 
 type Server struct {
 	bucket            *storage.BucketHandle
+	channel           string
+	slack             *slack.Client
 	collectConfig     *CollectConfig
-	webhookURL        string
 	notifier          Notifier
 	lastCollection    time.Time
 	lastNotification  map[string]time.Time
@@ -82,7 +86,7 @@ func (s *Server) Refresh() http.HandlerFunc {
 				continue
 			}
 
-			if err := s.notifier.Notify(s.webhookURL, r); err != nil {
+			if err := s.notifier.Notify(s.slack, s.channel, r); err != nil {
 				klog.Errorf("notify error: %v", err)
 				continue
 			}
