@@ -2,33 +2,49 @@ package main
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 
 	"github.com/VirusTotal/vt-go"
 	"k8s.io/klog/v2"
 )
 
-type VTRow map[string]string
+type VTResult struct {
+	URL   string
+	Found bool
+	Tags  []string
 
-func (r VTRow) String() string {
-	var sb strings.Builder
-	keys := []string{}
-	for k := range r {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
+	Name       string
+	Vendor     string
+	Reputation int64
 
-	for _, k := range keys {
-		v := r[k]
-		if len(v) > 384 {
-			v = v[0:384] + "..."
-		}
-		sb.WriteString(fmt.Sprintf("> %s: %s\n", k, v))
-	}
+	Country string
 
-	return strings.TrimSpace(sb.String())
+	Kind Kind
 }
+
+type Kind int
+
+const (
+	Unknown Kind = iota
+	HarmlessKnown
+	Harmless
+	Undetected
+	Suspicious
+	PossiblyMalicious
+	Malicious
+)
+
+var KindToEmoji = map[Kind]string{
+	Unknown:           "👽",
+	HarmlessKnown:     "✅",
+	Harmless:          "😇",
+	Undetected:        "🤷",
+	Suspicious:        "😰",
+	PossiblyMalicious: "🤢",
+	Malicious:         "👹",
+}
+
+type VTRow map[string]*VTResult
 
 var vtDumbCache = map[string]*vt.Object{}
 
@@ -58,67 +74,100 @@ func vtCacheGet(c *vt.Client, key string) (*vt.Object, error) {
 	return v, nil
 }
 
-func vtInterpret(c *vt.Client, key string) (string, error) {
+func vtInterpret(c *vt.Client, key string) (*VTResult, error) {
+
 	if strings.HasPrefix(key, "/") {
-		return "", nil
+		klog.Warningf("passed weird key: %s", key)
+		return nil, nil
 	}
 
 	url := fmt.Sprintf("https://www.virustotal.com/gui/%s", strings.Replace(key, "files", "file", 1))
 	url = strings.Replace(url, "ip_addresses", "ip-address", 1)
-	lines := []string{}
+
+	r := &VTResult{
+		URL: url,
+	}
 
 	vo, err := vtCacheGet(c, key)
 	if err != nil {
-		return "", fmt.Errorf("cache get: %w", err)
+		return nil, fmt.Errorf("cache get: %w", err)
 	}
 
 	if vo == nil {
-		return fmt.Sprintf("%s not found", key), nil
+		return r, nil
 	}
+	r.Found = true
 
-	tags, err := vo.GetStringSlice("tags")
+	ss, err := vo.GetStringSlice("tags")
 	if err != nil {
-		return "", fmt.Errorf("tags: %w", err)
+		return nil, fmt.Errorf("tags: %w", err)
+	}
+	r.Tags = ss
+
+	s, err := vo.GetString("meaningful_name")
+	if err == nil {
+		r.Name = s
 	}
 
-	summary := ""
-	if tags != nil {
-		summary = strings.Join(tags, " ")
+	ss, err = vo.GetStringSlice("names")
+	if err == nil && len(ss) > 0 && r.Name == "" {
+		r.Name = ss[0]
 	}
 
-	h, err := vo.GetInt64("last_analysis_stats.harmless")
+	ss, err = vo.GetStringSlice("known_distributors.distributors")
+	if err == nil && len(ss) > 0 {
+		r.Vendor = ss[0]
+	}
+
+	reputation, err := vo.GetInt64("reputation")
 	if err != nil {
-		return "", fmt.Errorf("last_analysis_stats.harmless: %w", err)
+		return nil, fmt.Errorf("reputation: %w", err)
+	}
+	r.Reputation = reputation
+
+	harmless, err := vo.GetInt64("last_analysis_stats.harmless")
+	if err != nil {
+		return nil, fmt.Errorf("last_analysis_stats.harmless: %w", err)
 	}
 
-	u, err := vo.GetInt64("last_analysis_stats.undetected")
+	undetected, err := vo.GetInt64("last_analysis_stats.undetected")
 	if err != nil {
-		return "", fmt.Errorf("last_analysis_stats.undetected: %w", err)
+		return nil, fmt.Errorf("last_analysis_stats.undetected: %w", err)
 	}
 
-	m, err := vo.GetInt64("last_analysis_stats.malicious")
+	malicious, err := vo.GetInt64("last_analysis_stats.malicious")
 	if err != nil {
-		return "", fmt.Errorf("last_analysis_stats.malicious: %w", err)
+		return nil, fmt.Errorf("last_analysis_stats.malicious: %w", err)
 	}
 
-	s, err := vo.GetInt64("last_analysis_stats.suspicious")
+	suspicious, err := vo.GetInt64("last_analysis_stats.suspicious")
 	if err != nil {
-		return "", fmt.Errorf("last_analysis_stats.suspicious: %w", err)
+		return nil, fmt.Errorf("last_analysis_stats.suspicious: %w", err)
 	}
 
 	switch {
-	case m > 3:
-		summary = fmt.Sprintf("%s *MALICIOUS[%d]*: %s", summary, m, url)
-	case m > 1:
-		summary = fmt.Sprintf("%s *Possibly malicious[%d]*: %s", summary, m, url)
-	case s > 1:
-		summary = fmt.Sprintf("%s *Possibly suspicious[%d]*: %s", summary, s, url)
-	case h > 3:
-		summary = fmt.Sprintf("%s harmless[%d]: %s", summary, h, url)
-	case u > 1:
-		summary = fmt.Sprintf("%s undetected[%d]: %s", summary, u, url)
+	case malicious > 3:
+		r.Kind = Malicious
+	case malicious > 1:
+		r.Kind = PossiblyMalicious
+	case suspicious > 1:
+		r.Kind = Suspicious
+	case harmless > 3:
+		r.Kind = Harmless
+	case undetected > 1:
+		r.Kind = Undetected
 	default:
-		summary = fmt.Sprintf("%s unknown: %s", summary, url)
+		r.Kind = Unknown
+	}
+
+	// Upgrade known
+	if r.Vendor != "" && r.Kind < Suspicious {
+		r.Kind = HarmlessKnown
+	}
+
+	// Downgrade items with a poor reputation
+	if r.Reputation < 0 && r.Kind < Suspicious {
+		r.Kind = Suspicious
 	}
 
 	as, err := vo.GetString("as_owner")
@@ -126,29 +175,28 @@ func vtInterpret(c *vt.Client, key string) (string, error) {
 		klog.Errorf("as_owner: %v", err)
 	}
 
+	if as != "" && r.Vendor == "" {
+		r.Vendor = as
+	}
+
 	co, err := vo.GetString("country")
 	if err != nil {
 		klog.Errorf("country: %v", err)
 	}
-
-	if as != "" {
-		summary = fmt.Sprintf(" %s [%s] ", summary, co)
+	if co != "" {
+		r.Vendor = fmt.Sprintf("%s [%s]", r.Vendor, r.Country)
+		r.Country = co
 	}
-
-	lines = append(lines, summary)
 
 	sub, err := vo.GetStringSlice("last_https_certificate.extensions.subject_alternative_name")
 	if err != nil {
 		klog.Errorf("last_https_certificate.subject: %v", err)
 	}
-
-	certs := ""
-	if len(sub) > 0 {
-		certs = fmt.Sprintf("certs: %s", strings.Join(sub, ","))
+	if len(sub) > 0 && r.Name == "" {
+		r.Name = strings.Join(sub, ",")
 	}
-	lines = append(lines, certs)
 
-	return strings.Join(lines, " / "), nil
+	return r, nil
 }
 
 func vtMetadata(r Row, c *vt.Client) (VTRow, error) {
@@ -158,7 +206,10 @@ func vtMetadata(r Row, c *vt.Client) (VTRow, error) {
 	}
 
 	for k, v := range r {
-		if strings.Contains(k, "sha256") {
+		if strings.TrimSpace(v) == "" {
+			continue
+		}
+		if strings.Contains(k, "sha256") || strings.HasSuffix(k, "_hash") {
 			vs, err := vtInterpret(c, fmt.Sprintf("files/%s", v))
 			if err != nil {
 				return vr, fmt.Errorf("get object: %w", err)
