@@ -1,11 +1,12 @@
-# osquery-diff-notify
+# kolide-pipeline-bot
 
-Send notifications from osquery differential logs, such as those output by Kolide.
+Send notifications from osquery differential logs uploaded to GCP storage by Kolide
 
 ## Features
 
 * Support for osquery differential logs
 * Rich Slack notifications
+* VirusTotal annotation
 * Google Cloud Storage
 * CLI and HTTP server modes
 * Duplicate event suppression
