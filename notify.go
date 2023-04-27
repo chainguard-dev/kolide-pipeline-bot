@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"math"
 	"regexp"
 	"strings"
 	"time"
@@ -22,7 +24,8 @@ var (
 	// Suppress duplicate messages within this time period
 	maxDupeTime = time.Hour * 24 * 1
 	// Follow-up to threads that are within this time period
-	relationTime = time.Hour
+	relationTime    = time.Hour
+	maxRelationTime = time.Hour * 24 * 3
 )
 
 func NewNotifier() Notifier {
@@ -102,11 +105,13 @@ func (n *Notifier) findThread(user string, relations map[string]string) (*Thread
 		via = append(via, "recency")
 	}
 
-	score := len(via)
-	if score > 6 {
-		score = score * 2
-	}
+	score := int(math.Ceil(math.Pow(float64(len(via)), 2) / 3))
+
 	threadMatchTime := relationTime * time.Duration(len(via))
+	if threadMatchTime > maxRelationTime {
+		threadMatchTime = maxRelationTime
+	}
+
 	if related != nil {
 		if time.Since(related.Updated) < threadMatchTime {
 			return related, via
@@ -136,8 +141,10 @@ func (n *Notifier) saveThread(user string, row DecoratedRow, text, ts string) *T
 	}
 
 	found.Updated = time.Now()
+
+	// Add new relation tags if they do not conflict with existing ones.
 	for k, v := range relations {
-		if found.Relations[k] != "" {
+		if found.Relations[k] == "" {
 			found.Relations[k] = v
 		}
 	}
@@ -174,42 +181,33 @@ func mungeMsg(msg string) string {
 	return new
 }
 
-func (n *Notifier) Notify(s *slack.Client, channel string, row DecoratedRow) error {
-	t := time.Unix(row.UNIXTime, 0)
-
-	id := row.Decorations["hardware_serial"]
-	if row.Decorations["device_owner_email"] != "" {
-		id, _, _ = strings.Cut(row.Decorations["device_owner_email"], "@")
-		id = id + "@"
+func messageText(msg *slack.Message) string {
+	j, err := json.Marshal(msg.Msg.Blocks.BlockSet)
+	if err != nil {
+		panic(fmt.Sprintf("unable to marshal: %v", err))
 	}
+	return string(j)
+}
 
+func (n *Notifier) Notify(s *slack.Client, channel string, row DecoratedRow) error {
 	device := row.Decorations["computer_name"]
 	if _, ok := n.threads[device]; !ok {
 		n.threads[device] = []*Thread{}
 	}
 
-	klog.V(1).Infof("decorations: %+v", row.Decorations)
-
-	text := fmt.Sprintf("*%s* on %s at %s (%s):\n> %s", row.Kind, row.Decorations["computer_name"], t.Format(time.RFC822), id, row.Row)
-	if len(row.VirusTotal) > 0 {
-		text = text + "\n\n" + row.VirusTotal.String()
-	}
-
+	message := Format(MessageInput{Row: row})
+	text := messageText(message)
 	if n.recentDupe(text) {
 		klog.Infof("suppressing recent dupe: %s", text)
 		return nil
 	}
 
-	relations := rowRelations(row)
-	thread, via := n.findThread(device, relations)
+	thread, via := n.findThread(device, rowRelations(row))
 	threadID := ""
 
 	if thread != nil {
-		klog.Infof("found %s thread via %s: %+v", device, via, thread)
-		text = text + fmt.Sprintf("\n\n> related via %s", strings.Join(via, " "))
+		message = Format(MessageInput{Row: row, Via: via})
 		threadID = thread.ID
-	} else {
-		klog.V(1).Infof("no threads for %s matching %+v", device, relations)
 	}
 
 	n.saveMsg(text)
@@ -221,8 +219,15 @@ func (n *Notifier) Notify(s *slack.Client, channel string, row DecoratedRow) err
 		return nil
 	}
 
+	// we do this very late because string functions that return ``` is not fun.
+	text = strings.ReplaceAll(text, "---", "```")
 	klog.Infof("### POSTING MSG[thread=%s]: %s", threadID, text)
-	ch, ts, err := s.PostMessage(channel, slack.MsgOptionText(text, false), slack.MsgOptionAsUser(true), slack.MsgOptionTS(threadID))
+	ch, ts, err := s.PostMessage(channel,
+		slack.MsgOptionBlocks(message.Msg.Blocks.BlockSet...),
+		slack.MsgOptionAsUser(true),
+		slack.MsgOptionTS(threadID),
+		slack.MsgOptionDisableLinkUnfurl(),
+	)
 	klog.Infof("postmessage: ch=%s ts=%s err=%v", ch, ts, err)
 	if ts != "" {
 		n.saveThread(device, row, text, ts)

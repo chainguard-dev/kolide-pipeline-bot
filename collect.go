@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -45,50 +44,6 @@ type DecoratedRow struct {
 	VirusTotal  VTRow
 }
 
-func (r Row) String() string {
-	var sb strings.Builder
-	var kb strings.Builder
-
-	keys := []string{}
-	for k := range r {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	sinceBreak := 0
-
-	for _, k := range keys {
-		v := r[k]
-
-		// exception keys are printed last
-		if strings.HasSuffix(k, "exception") || strings.HasSuffix(k, "_key") {
-			if kb.Len() == 0 {
-				kb.WriteString("\n\n")
-			}
-			kb.WriteString(fmt.Sprintf("> %s: '%s'\n", k, v))
-			continue
-		}
-
-		if len(v) > 768 {
-			v = v[0:768] + "..."
-		}
-		text := fmt.Sprintf(`%s:%s `, k, v)
-		if strings.Contains(v, " ") || strings.Contains(v, ":") {
-			text = fmt.Sprintf(`%s:'%s' `, k, v)
-		}
-
-		if sinceBreak > 100 || (sinceBreak > 0 && (len(text)+sinceBreak) > 100) {
-			sb.WriteString("\n> ")
-			sinceBreak = len(text)
-		} else {
-			sinceBreak += len(text)
-		}
-
-		sb.WriteString(text)
-	}
-
-	return strings.TrimSpace(sb.String() + kb.String())
-}
-
 type CollectConfig struct {
 	Prefix         string
 	Cutoff         time.Time
@@ -102,6 +57,7 @@ func getRows(ctx context.Context, bucket *storage.BucketHandle, vtc *vt.Client, 
 
 	rows := []DecoratedRow{}
 	seen := map[string]bool{}
+	maxEmptySize := int64(128)
 
 	for {
 		attrs, err := it.Next()
@@ -125,7 +81,12 @@ func getRows(ctx context.Context, bucket *storage.BucketHandle, vtc *vt.Client, 
 			continue
 		}
 
-		klog.V(1).Infof("reading %s ...", attrs.Name)
+		if attrs.Size <= maxEmptySize {
+			klog.V(1).Infof("skipping %s -- smaller than %d bytes", attrs.Name, attrs.Size)
+			continue
+		}
+
+		klog.Infof("reading: %+v (%d bytes)", attrs.Name, attrs.Size)
 		rc, err := bucket.Object(attrs.Name).NewReader(ctx)
 		if err != nil {
 			klog.Fatal(err)
@@ -155,36 +116,47 @@ func getRows(ctx context.Context, bucket *storage.BucketHandle, vtc *vt.Client, 
 		if kind != lastKind {
 			klog.Infof("=== kind: %s ===", kind)
 			lastKind = kind
+			maxEmptySize = 0
+		}
+
+		if len(out.DiffResults.Added) == 0 && len(out.DiffResults.Removed) == 0 {
+			if attrs.Size > int64(maxEmptySize) {
+				maxEmptySize = attrs.Size
+				klog.V(1).Infof("new min size: %d - %s", maxEmptySize, body)
+			}
 		}
 
 		for _, r := range out.DiffResults.Added {
 			msg := fmt.Sprintf("%s/%s (%+v): %s", kind, out.Decorations["computer_name"], out.KolideDecorations, r)
-			if !seen[msg] {
-				klog.Infof("collecting: %s", msg)
-				vt, err := vtMetadata(r, vtc)
-				if err != nil {
-					klog.Errorf("failed to fetch VT metadata: %v", err)
-				}
-				row := DecoratedRow{
-					Decorations: out.Decorations,
-					UNIXTime:    out.UNIXTime,
-					Kind:        kind,
-					Row:         r,
-					VirusTotal:  vt,
-				}
-
-				if out.KolideDecorations.DeviceOwnerEmail != "" {
-					row.Decorations["device_owner_email"] = out.KolideDecorations.DeviceOwnerEmail
-				}
-				if out.KolideDecorations.DeviceOwnerType != "" {
-					row.Decorations["device_owner_type"] = out.KolideDecorations.DeviceOwnerType
-				}
-				if out.KolideDecorations.DeviceOwnerEmail != "" {
-					row.Decorations["device_display_name"] = out.KolideDecorations.DeviceDisplayName
-				}
-
-				rows = append(rows, row)
+			if seen[msg] {
+				klog.Infof("ignoring seen msg: %s", msg)
+				continue
 			}
+
+			klog.Infof("collecting: %s", msg)
+			vt, err := vtMetadata(r, vtc)
+			if err != nil {
+				klog.Errorf("failed to fetch VT metadata: %v", err)
+			}
+			row := DecoratedRow{
+				Decorations: out.Decorations,
+				UNIXTime:    out.UNIXTime,
+				Kind:        kind,
+				Row:         r,
+				VirusTotal:  vt,
+			}
+
+			if out.KolideDecorations.DeviceOwnerEmail != "" {
+				row.Decorations["device_owner_email"] = out.KolideDecorations.DeviceOwnerEmail
+			}
+			if out.KolideDecorations.DeviceOwnerType != "" {
+				row.Decorations["device_owner_type"] = out.KolideDecorations.DeviceOwnerType
+			}
+			if out.KolideDecorations.DeviceOwnerEmail != "" {
+				row.Decorations["device_display_name"] = out.KolideDecorations.DeviceDisplayName
+			}
+
+			rows = append(rows, row)
 			seen[msg] = true
 		}
 	}
