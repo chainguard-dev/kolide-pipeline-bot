@@ -71,11 +71,11 @@ func wordWrap(s string, max int, indent int) string {
 func treeLine(prefix string, row Row, vr VTRow, level int) string {
 	klog.Infof("treeline row: [[%+v]]", row)
 
+	uid := row[fmt.Sprintf("%suid", prefix)]
 	euid := row[fmt.Sprintf("%seuid", prefix)]
 	pid := row[fmt.Sprintf("%spid", prefix)]
 	name := row[fmt.Sprintf("%sname", prefix)]
 	cmd := row[fmt.Sprintf("%scmd", prefix)]
-	cwd := row[fmt.Sprintf("%scwd", prefix)]
 	path := row[fmt.Sprintf("%spath", prefix)]
 	if cmd == "" {
 		cmd = row[fmt.Sprintf("%scmdline", prefix)]
@@ -97,12 +97,12 @@ func treeLine(prefix string, row Row, vr VTRow, level int) string {
 	}
 
 	env := fmt.Sprintf("pid: %s", pid)
-	if cwd != "" && euid != "" && pid != "" {
-		env = fmt.Sprintf("cwd: %s euid: %s pid: %s", cwd, euid, pid)
+	if euid != "" && pid != "" {
+		env = fmt.Sprintf("pid: %s [@%s]", pid, euid)
 	}
 
-	if cwd == "" && euid != "" && pid != "" {
-		env = fmt.Sprintf("euid: %s pid: %s", euid, pid)
+	if uid != "" && euid != "" && pid != "" && euid != uid {
+		env = fmt.Sprintf("pid: %s [@%s from %s]", pid, euid, uid)
 	}
 
 	var sb strings.Builder
@@ -115,7 +115,7 @@ func treeLine(prefix string, row Row, vr VTRow, level int) string {
 	sb.WriteString(fmt.Sprintf("%s\n", wordWrap(cmd, 78-level, level+2)))
 	sb.WriteString(strings.Repeat(" ", level))
 	klog.Infof("env: %s", env)
-	// sb.WriteString(fmt.Sprintf("┃ %s\n", env))
+	sb.WriteString(fmt.Sprintf("┃ %s\n", env))
 
 	keys := []string{}
 	for k := range row {
@@ -132,9 +132,9 @@ func treeLine(prefix string, row Row, vr VTRow, level int) string {
 			continue
 		}
 		// in env
-		// if strings.HasSuffix(k, "_cwd") || strings.HasSuffix(k, "_pid") || strings.HasSuffix(k, "_euid") {
-		// 	continue
-		// }
+		if strings.HasSuffix(k, "_pid") || strings.HasSuffix(k, "_uid") || strings.HasSuffix(k, "_euid") {
+			continue
+		}
 
 		if strings.HasSuffix(k, "_name") || strings.HasSuffix(k, "_cmd") || strings.HasSuffix(k, "_cmdline") || strings.HasSuffix(k, "_path") {
 			continue
@@ -191,41 +191,10 @@ func treeFormat(row Row, vr VTRow) []*slack.SectionBlock {
 		sb.WriteString(treeLine("p3_", row, vr, 3))
 	}
 
-	keys := []string{}
-	for k := range row {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	printKeys := []string{}
-	for _, k := range keys {
-		v := row[k]
-
-		if strings.HasPrefix(k, "p0_") || strings.HasPrefix(k, "p1_") || strings.HasPrefix(k, "p2_") || strings.HasPrefix(k, "p3_") {
-			continue
-		}
-
-		if strings.TrimSpace(v) == "" {
-			continue
-		}
-		printKeys = append(printKeys, k)
-	}
-
 	sb.WriteString("```")
 	blocks := []*slack.SectionBlock{slack.NewSectionBlock(slack.NewTextBlockObject(slack.MarkdownType, sb.String(), false, false), nil, nil)}
-
-	if len(printKeys) == 0 {
-		return blocks
-	}
-
-	sb.Reset()
-
-	for _, k := range printKeys {
-		v := row[k]
-		sb.WriteString(fmt.Sprintf("*%s*: %s\n", k, v))
-	}
-
-	blocks = append(blocks, slack.NewSectionBlock(slack.NewTextBlockObject(slack.MarkdownType, sb.String(), false, false), nil, nil))
+	// print extra fields
+	blocks = append(blocks, genericFormat(row, vr)...)
 	return blocks
 }
 
@@ -244,6 +213,11 @@ func genericFormat(r Row, vr VTRow) []*slack.SectionBlock {
 
 	for _, k := range keys {
 		v := r[k]
+
+		// handled by treeFormat
+		if strings.HasPrefix(k, "p0_") || strings.HasPrefix(k, "p1_") || strings.HasPrefix(k, "p2_") || strings.HasPrefix(k, "p3_") {
+			continue
+		}
 
 		// empty block, should we care?
 		if strings.TrimSpace(v) == "" {
