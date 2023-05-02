@@ -226,7 +226,7 @@ func genericFormat(r Row, vr VTRow) []*slack.SectionBlock {
 
 		// exception keys are printed last
 		if strings.HasSuffix(k, "exception") || strings.HasSuffix(k, "_key") {
-			exceptions.WriteString(fmt.Sprintf("*%s*: `%s`", k, v))
+			exceptions.WriteString(fmt.Sprintf("*%s*: `%s`\n", k, v))
 			continue
 		}
 
