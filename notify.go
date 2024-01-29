@@ -221,14 +221,27 @@ func (n *Notifier) Notify(s *slack.Client, channel string, row DecoratedRow) err
 
 	// we do this very late because string functions that return ``` is not fun.
 	text = strings.ReplaceAll(text, "---", "```")
-	klog.Infof("### POSTING MSG[thread=%s]: %s", threadID, text)
+	klog.Infof("### POST[thread=%s]: %s", threadID, text)
 	ch, ts, err := s.PostMessage(channel,
 		slack.MsgOptionBlocks(message.Msg.Blocks.BlockSet...),
 		slack.MsgOptionAsUser(true),
 		slack.MsgOptionTS(threadID),
 		slack.MsgOptionDisableLinkUnfurl(),
 	)
-	klog.Infof("postmessage: ch=%s ts=%s err=%v", ch, ts, err)
+	klog.Infof("postmessage returned: ch=%s ts=%s err=%v", ch, ts, err)
+
+	if err != nil {
+		msg := fmt.Sprintf("unable to post: %v - blocks: %+v ...", err, message.Msg.Blocks)
+		klog.Errorf("posting error message: %s", msg)
+		if len(msg) > 256 {
+			msg = msg[0:256]
+		}
+		_, _, err := s.PostMessage(channel, slack.MsgOptionText(msg, false))
+		if err != nil {
+			klog.Errorf("error posting error: %v", err)
+		}
+	}
+
 	if ts != "" {
 		n.saveThread(device, row, text, ts)
 	}
