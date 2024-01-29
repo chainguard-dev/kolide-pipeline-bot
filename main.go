@@ -36,7 +36,7 @@ var (
 	excludeSubDirsFlag = flag.String("exclude-subdirs", "", "exclude alerts for this comma-separated list of subdirectories")
 	channelFlag        = flag.String("channel-id", "", "Slack channel to post to (required for replies)")
 	serveFlag          = flag.Bool("serve", false, "")
-	maxAgeFlag         = flag.Duration("max-age", 10*time.Minute, "Maximum age of events to include (for best use, use at least 2X your trigger time)")
+	maxAgeFlag         = flag.Duration("max-age", 30*time.Minute, "Maximum age of events to include (for best use, use at least 2X your trigger time)")
 	maxNoticesFlag     = flag.Int("max-notices-per-kind", 5, "Maximum notices per kind (spam reduction)")
 )
 
