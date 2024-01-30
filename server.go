@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"runtime"
+	"sync"
 	"time"
 
 	"cloud.google.com/go/storage"
@@ -54,11 +55,22 @@ type Server struct {
 	lastNotification  map[string]time.Time
 	maxNoticesPerKind int
 	vtc               *vt.Client
+	running           sync.Mutex
 }
 
 func (s *Server) Refresh() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		klog.Infof("%s: %s %s", r.RemoteAddr, r.Method, r.URL)
+
+		klog.Infof("attempting to lock the mutex ...")
+		s.running.Lock()
+		defer func() {
+			klog.Infof("unlocking mutex ...")
+			s.running.Unlock()
+			klog.Infof("mutex unlocked")
+		}()
+		klog.Infof("refresh mutex locked")
+
 		duration := time.Since(s.lastCollection)
 		if s.lastCollection.After(s.collectConfig.Cutoff) {
 			// Go backwards to avoid TOCTOU races

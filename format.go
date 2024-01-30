@@ -16,7 +16,7 @@ type MessageInput struct {
 	Via []string
 }
 
-func Format(m MessageInput) *slack.Message {
+func Format(m MessageInput, fancy bool) *slack.Message {
 	row := m.Row
 
 	id := row.Decorations["hardware_serial"]
@@ -28,28 +28,29 @@ func Format(m MessageInput) *slack.Message {
 	title := fmt.Sprintf("%s — %s @%s %s", row.Kind, id, row.Decorations["computer_name"], t.Format(time.TimeOnly))
 
 	var content []*slack.SectionBlock
+	kind := "unknown"
 
-	if row.Row["p0_name"] != "" && row.Row["p1_name"] != "" {
+	if !fancy {
+		klog.Infof("using plain format for %+v", row.Row)
+		kind = "plain"
+		content = plainFormat(row.Row, row.VirusTotal)
+	} else if row.Row["p0_name"] != "" && row.Row["p1_name"] != "" {
+		kind = "tree"
+		klog.Infof("using tree format for %+v", row.Row)
 		content = treeFormat(row.Row, row.VirusTotal)
 	} else {
-		content = genericFormat(row.Row, row.VirusTotal)
+		kind = "table"
+		klog.Infof("using table format for %+v", row.Row)
+		content = tableFormat(row.Row, row.VirusTotal)
 	}
-
-	extra := ""
-	if len(m.Via) > 0 && len(m.Via) < 5 {
-		extra = fmt.Sprintf("\n\nrelated via %s", strings.Join(m.Via, " "))
-	}
+	klog.Infof("%q returned %d content blocks: %s", kind, len(content), content)
 
 	titleBlock := slack.NewHeaderBlock(slack.NewTextBlockObject(slack.PlainTextType, title, false, false))
-	extraBlock := slack.NewContextBlock("", slack.NewTextBlockObject(slack.MarkdownType, extra, false, false), nil, nil)
 
 	var msg slack.Message
 	msg = slack.AddBlockMessage(msg, titleBlock)
 	for _, c := range content {
 		msg = slack.AddBlockMessage(msg, c)
-	}
-	if extra != "" {
-		msg = slack.AddBlockMessage(msg, extraBlock)
 	}
 	return &msg
 }
@@ -192,14 +193,69 @@ func treeFormat(row Row, vr VTRow) []*slack.SectionBlock {
 	}
 
 	sb.WriteString("```")
+
+	klog.Infof("TREE FORMAT (%d bytes): %s", len(sb.String()), sb.String())
 	blocks := []*slack.SectionBlock{slack.NewSectionBlock(slack.NewTextBlockObject(slack.MarkdownType, sb.String(), false, false), nil, nil)}
 	// print extra fields
-	blocks = append(blocks, genericFormat(row, vr)...)
+	blocks = append(blocks, tableFormat(row, vr)...)
 	return blocks
 }
 
-func genericFormat(r Row, vr VTRow) []*slack.SectionBlock {
-	klog.Infof("generic format row: %s\n\nvt: %+v", r, vr)
+func plainFormat(r Row, vr VTRow) []*slack.SectionBlock {
+	klog.Infof("plain format row: %s\n\nvt: %+v", r, vr)
+
+	keys := []string{}
+	for k := range r {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var longText strings.Builder
+	var exceptions strings.Builder
+
+	for _, k := range keys {
+		v := r[k]
+
+		if strings.TrimSpace(v) == "" {
+			continue
+		}
+
+		// exception keys are printed last
+		if strings.HasSuffix(k, "exception") || strings.HasSuffix(k, "_key") {
+			exceptions.WriteString(fmt.Sprintf("*%s*: `%s`\n", k, v))
+			continue
+		}
+
+		if len(v) > 768 {
+			v = v[0:768] + "..."
+		}
+
+		if vr[k] != nil {
+			v = formatVirusTotal(vr[k])
+		} else {
+			if len(v) > 96 || !strings.Contains(v, " ") || strings.HasPrefix(v, "/") {
+				v = fmt.Sprintf("`%s`", v)
+			}
+		}
+
+		longText.WriteString(fmt.Sprintf("*%s*: %s\n", k, v))
+	}
+
+	blocks := []*slack.SectionBlock{}
+
+	if longText.Len() > 0 {
+		blocks = append(blocks, slack.NewSectionBlock(slack.NewTextBlockObject(slack.MarkdownType, longText.String(), false, false), nil, nil))
+	}
+
+	if exceptions.Len() > 0 {
+		blocks = append(blocks, slack.NewSectionBlock(slack.NewTextBlockObject(slack.MarkdownType, exceptions.String(), false, false), nil, nil))
+	}
+
+	return blocks
+}
+
+func tableFormat(r Row, vr VTRow) []*slack.SectionBlock {
+	klog.Infof("table format row: %s\n\nvt: %+v", r, vr)
 
 	keys := []string{}
 	for k := range r {
@@ -273,5 +329,6 @@ func genericFormat(r Row, vr VTRow) []*slack.SectionBlock {
 	if exceptions.Len() > 0 {
 		blocks = append(blocks, slack.NewSectionBlock(slack.NewTextBlockObject(slack.MarkdownType, exceptions.String(), false, false), nil, nil))
 	}
+
 	return blocks
 }

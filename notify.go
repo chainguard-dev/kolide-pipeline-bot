@@ -195,7 +195,7 @@ func (n *Notifier) Notify(s *slack.Client, channel string, row DecoratedRow) err
 		n.threads[device] = []*Thread{}
 	}
 
-	message := Format(MessageInput{Row: row})
+	message := Format(MessageInput{Row: row}, true)
 	text := messageText(message)
 	if n.recentDupe(text) {
 		klog.Infof("suppressing recent dupe: %s", text)
@@ -206,7 +206,7 @@ func (n *Notifier) Notify(s *slack.Client, channel string, row DecoratedRow) err
 	threadID := ""
 
 	if thread != nil {
-		message = Format(MessageInput{Row: row, Via: via})
+		message = Format(MessageInput{Row: row, Via: via}, true)
 		threadID = thread.ID
 	}
 
@@ -221,14 +221,29 @@ func (n *Notifier) Notify(s *slack.Client, channel string, row DecoratedRow) err
 
 	// we do this very late because string functions that return ``` is not fun.
 	text = strings.ReplaceAll(text, "---", "```")
-	klog.Infof("### POSTING MSG[thread=%s]: %s", threadID, text)
+	klog.Infof("### POST[thread=%s]: %s", threadID, text)
 	ch, ts, err := s.PostMessage(channel,
 		slack.MsgOptionBlocks(message.Msg.Blocks.BlockSet...),
 		slack.MsgOptionAsUser(true),
 		slack.MsgOptionTS(threadID),
 		slack.MsgOptionDisableLinkUnfurl(),
 	)
-	klog.Infof("postmessage: ch=%s ts=%s err=%v", ch, ts, err)
+	klog.Infof("postmessage returned: ch=%s ts=%s err=%v", ch, ts, err)
+
+	if err != nil {
+		klog.Errorf("SEND FAILED for %s/%s: %v", row.Kind, device, err)
+		message = Format(MessageInput{Row: row, Via: via}, false)
+		text := messageText(message)
+		klog.Infof("### POST AGAIN[thread=%s]: %s", threadID, text)
+		ch, ts, err := s.PostMessage(channel,
+			slack.MsgOptionBlocks(message.Msg.Blocks.BlockSet...),
+			slack.MsgOptionAsUser(true),
+			slack.MsgOptionTS(threadID),
+			slack.MsgOptionDisableLinkUnfurl(),
+		)
+		klog.Infof("postmessage again returned: ch=%s ts=%s err=%v", ch, ts, err)
+	}
+
 	if ts != "" {
 		n.saveThread(device, row, text, ts)
 	}
