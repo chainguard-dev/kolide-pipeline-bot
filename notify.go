@@ -195,7 +195,7 @@ func (n *Notifier) Notify(s *slack.Client, channel string, row DecoratedRow) err
 		n.threads[device] = []*Thread{}
 	}
 
-	message := Format(MessageInput{Row: row})
+	message := Format(MessageInput{Row: row}, true)
 	text := messageText(message)
 	if n.recentDupe(text) {
 		klog.Infof("suppressing recent dupe: %s", text)
@@ -206,7 +206,7 @@ func (n *Notifier) Notify(s *slack.Client, channel string, row DecoratedRow) err
 	threadID := ""
 
 	if thread != nil {
-		message = Format(MessageInput{Row: row, Via: via})
+		message = Format(MessageInput{Row: row, Via: via}, true)
 		threadID = thread.ID
 	}
 
@@ -231,15 +231,17 @@ func (n *Notifier) Notify(s *slack.Client, channel string, row DecoratedRow) err
 	klog.Infof("postmessage returned: ch=%s ts=%s err=%v", ch, ts, err)
 
 	if err != nil {
-		msg := fmt.Sprintf("unable to post: %v - blocks: %+v ...", err, message.Msg.Blocks)
-		klog.Errorf("posting error message: %s", msg)
-		if len(msg) > 256 {
-			msg = msg[0:256]
-		}
-		_, _, err := s.PostMessage(channel, slack.MsgOptionText(msg, false))
-		if err != nil {
-			klog.Errorf("error posting error: %v", err)
-		}
+		klog.Errorf("SEND FAILED for %s/%s: %v", row.Kind, device, err)
+		message = Format(MessageInput{Row: row, Via: via}, false)
+		text := messageText(message)
+		klog.Infof("### POST AGAIN[thread=%s]: %s", threadID, text)
+		ch, ts, err := s.PostMessage(channel,
+			slack.MsgOptionBlocks(message.Msg.Blocks.BlockSet...),
+			slack.MsgOptionAsUser(true),
+			slack.MsgOptionTS(threadID),
+			slack.MsgOptionDisableLinkUnfurl(),
+		)
+		klog.Infof("postmessage again returned: ch=%s ts=%s err=%v", ch, ts, err)
 	}
 
 	if ts != "" {

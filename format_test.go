@@ -107,7 +107,7 @@ mtime: 1681810945
 `},
 	}
 	for _, tc := range tests {
-		got := Format(tc.in)
+		got := Format(tc.in, true)
 		if diff := cmp.Diff(got, tc.want); diff != "" {
 			t.Fatalf("expected:\n%v\ngot:\n%v\ndiff:\n%s", tc.want, got, diff)
 		}
