@@ -34,7 +34,7 @@ func Format(m MessageInput, fancy bool) *slack.Message {
 		klog.Infof("using plain format for %+v", row.Row)
 		kind = "plain"
 		content = plainFormat(row.Row, row.VirusTotal)
-	} else if row.Row["p0_name"] != "" && row.Row["p1_name"] != "" {
+	} else if row.Row["p0_name"] != "" {
 		kind = "tree"
 		klog.Infof("using tree format for %+v", row.Row)
 		content = treeFormat(row.Row, row.VirusTotal)
@@ -43,6 +43,13 @@ func Format(m MessageInput, fancy bool) *slack.Message {
 		klog.Infof("using table format for %+v", row.Row)
 		content = tableFormat(row.Row, row.VirusTotal)
 	}
+
+	if len(content) == 0 {
+		klog.Warningf("%q renderer returned no content, falling back to plain", kind)
+		kind = "plain"
+		content = plainFormat(row.Row, row.VirusTotal)
+	}
+
 	klog.Infof("%q returned %d content blocks: %s", kind, len(content), content)
 
 	titleBlock := slack.NewHeaderBlock(slack.NewTextBlockObject(slack.PlainTextType, title, false, false))
