@@ -44,12 +44,6 @@ func Format(m MessageInput, fancy bool) *slack.Message {
 		content = tableFormat(row.Row, row.VirusTotal, false)
 	}
 
-	if len(content) == 0 {
-		klog.Warningf("%q renderer returned no content, falling back to plain", kind)
-		kind = "plain"
-		content = plainFormat(row.Row, row.VirusTotal)
-	}
-
 	klog.Infof("%q returned %d content blocks: %s", kind, len(content), content)
 
 	titleBlock := slack.NewHeaderBlock(slack.NewTextBlockObject(slack.PlainTextType, title, false, false))
