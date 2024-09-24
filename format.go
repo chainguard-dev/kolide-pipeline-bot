@@ -34,15 +34,16 @@ func Format(m MessageInput, fancy bool) *slack.Message {
 		klog.Infof("using plain format for %+v", row.Row)
 		kind = "plain"
 		content = plainFormat(row.Row, row.VirusTotal)
-	} else if row.Row["p0_name"] != "" && row.Row["p1_name"] != "" {
+	} else if row.Row["p0_name"] != "" {
 		kind = "tree"
 		klog.Infof("using tree format for %+v", row.Row)
 		content = treeFormat(row.Row, row.VirusTotal)
 	} else {
 		kind = "table"
 		klog.Infof("using table format for %+v", row.Row)
-		content = tableFormat(row.Row, row.VirusTotal)
+		content = tableFormat(row.Row, row.VirusTotal, false)
 	}
+
 	klog.Infof("%q returned %d content blocks: %s", kind, len(content), content)
 
 	titleBlock := slack.NewHeaderBlock(slack.NewTextBlockObject(slack.PlainTextType, title, false, false))
@@ -196,8 +197,8 @@ func treeFormat(row Row, vr VTRow) []*slack.SectionBlock {
 
 	klog.Infof("TREE FORMAT (%d bytes): %s", len(sb.String()), sb.String())
 	blocks := []*slack.SectionBlock{slack.NewSectionBlock(slack.NewTextBlockObject(slack.MarkdownType, sb.String(), false, false), nil, nil)}
-	// print extra fields
-	blocks = append(blocks, tableFormat(row, vr)...)
+	// print extra non-process fields
+	blocks = append(blocks, tableFormat(row, vr, true)...)
 	return blocks
 }
 
@@ -254,7 +255,7 @@ func plainFormat(r Row, vr VTRow) []*slack.SectionBlock {
 	return blocks
 }
 
-func tableFormat(r Row, vr VTRow) []*slack.SectionBlock {
+func tableFormat(r Row, vr VTRow, skipProcesses bool) []*slack.SectionBlock {
 	klog.Infof("table format row: %s\n\nvt: %+v", r, vr)
 
 	keys := []string{}
@@ -271,7 +272,7 @@ func tableFormat(r Row, vr VTRow) []*slack.SectionBlock {
 		v := r[k]
 
 		// handled by treeFormat
-		if strings.HasPrefix(k, "p0_") || strings.HasPrefix(k, "p1_") || strings.HasPrefix(k, "p2_") || strings.HasPrefix(k, "p3_") {
+		if skipProcesses && (strings.HasPrefix(k, "p0_") || strings.HasPrefix(k, "p1_") || strings.HasPrefix(k, "p2_") || strings.HasPrefix(k, "p3_")) {
 			continue
 		}
 
