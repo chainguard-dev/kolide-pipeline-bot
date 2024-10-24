@@ -22,7 +22,7 @@ var (
 	nonAlpha       = regexp.MustCompile(`\W+`)
 
 	// Suppress duplicate messages within this time period
-	maxDupeTime = time.Hour * 24 * 6
+	maxDupeTime = time.Hour * 24 * 4
 	// Follow-up to threads that are within this time period
 	relationTime    = time.Hour
 	maxRelationTime = time.Hour * 4
