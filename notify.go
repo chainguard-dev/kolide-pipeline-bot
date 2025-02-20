@@ -20,9 +20,10 @@ var (
 	fuzzyNumValue  = regexp.MustCompile(`\d+`)
 	fuzzyDateIntro = regexp.MustCompile(` at \d+ \w+ \d+.*`)
 	nonAlpha       = regexp.MustCompile(`\W+`)
+	aiText         = regexp.MustCompile(`AI: .*`)
 
 	// Suppress duplicate messages within this time period
-	maxDupeTime = time.Hour * 24 * 3
+	maxDupeTime = time.Hour * 24 * 5
 	// Follow-up to threads that are within this time period
 	relationTime    = time.Hour
 	maxRelationTime = time.Hour * 4
@@ -155,6 +156,7 @@ func (n *Notifier) saveThread(user string, row DecoratedRow, text, ts string) *T
 // isDuplicate checks if the message is an exact duplicate or a fuzzy duplicate
 func (n *Notifier) recentDupe(msg string) bool {
 	munged := mungeMsg(msg)
+	klog.Infof("dupe munge: %s", munged)
 	if n.lastNotification[munged].IsZero() {
 		klog.V(1).Infof("no dupe for %s", munged)
 		return false
@@ -172,11 +174,12 @@ func (n *Notifier) saveMsg(msg string) {
 
 // mungeMsg munges a message for the duplicate detector
 func mungeMsg(msg string) string {
-	new := fuzzyIPValue.ReplaceAllString(msg, "<ip>")
-	new = fuzzyIPv6Value.ReplaceAllString(new, "<ip>")
-	new = fuzzyDateIntro.ReplaceAllString(new, "<date>")
-	new = fuzzyAlphaNum.ReplaceAllString(new, "<alphanum>")
-	new = fuzzyNumValue.ReplaceAllString(new, "<num>")
+	new := fuzzyIPValue.ReplaceAllString(msg, "")
+	new = aiText.ReplaceAllString(new, "")
+	new = fuzzyIPv6Value.ReplaceAllString(new, "")
+	new = fuzzyDateIntro.ReplaceAllString(new, "")
+	new = fuzzyAlphaNum.ReplaceAllString(new, "")
+	new = fuzzyNumValue.ReplaceAllString(new, "")
 	new = nonAlpha.ReplaceAllString(new, " ")
 	return new
 }

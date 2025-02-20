@@ -37,11 +37,14 @@ type diffResults struct {
 type Row map[string]string
 
 type DecoratedRow struct {
-	Decorations map[string]string
-	Kind        string
-	UNIXTime    int64
-	Row         Row
-	VirusTotal  VTRow
+	Decorations    map[string]string
+	Kind           string
+	UNIXTime       int64
+	Row            Row
+	VirusTotal     VTRow
+	Score          int
+	Interpretation string
+	Source         string
 }
 
 type CollectConfig struct {
@@ -50,12 +53,12 @@ type CollectConfig struct {
 	ExcludeSubdirs []string
 }
 
-func getRows(ctx context.Context, bucket *storage.BucketHandle, vtc *vt.Client, cc *CollectConfig) []DecoratedRow {
+func getRows(ctx context.Context, bucket *storage.BucketHandle, vtc *vt.Client, cc *CollectConfig) []*DecoratedRow {
 	klog.Infof("finding items matching: %+v ...", cc)
 	it := bucket.Objects(ctx, &storage.Query{Prefix: cc.Prefix})
 	lastKind := ""
 
-	rows := []DecoratedRow{}
+	rows := []*DecoratedRow{}
 	seen := map[string]bool{}
 	maxEmptySize := int64(128)
 
@@ -144,6 +147,7 @@ func getRows(ctx context.Context, bucket *storage.BucketHandle, vtc *vt.Client, 
 				Kind:        kind,
 				Row:         r,
 				VirusTotal:  vt,
+				Source:      attrs.Name,
 			}
 
 			if out.KolideDecorations.DeviceOwnerEmail != "" {
@@ -156,7 +160,7 @@ func getRows(ctx context.Context, bucket *storage.BucketHandle, vtc *vt.Client, 
 				row.Decorations["device_display_name"] = out.KolideDecorations.DeviceDisplayName
 			}
 
-			rows = append(rows, row)
+			rows = append(rows, &row)
 			seen[msg] = true
 		}
 	}

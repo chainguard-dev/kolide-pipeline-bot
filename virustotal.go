@@ -35,12 +35,12 @@ const (
 )
 
 var KindToEmoji = map[Kind]string{
-	Unknown:           "👽",
+	Unknown:           "❓",
 	HarmlessKnown:     "✅",
-	Harmless:          "😇",
-	Undetected:        "🤷",
-	Suspicious:        "😰",
-	PossiblyMalicious: "🤢",
+	Harmless:          "🔵",
+	Undetected:        "⚫",
+	Suspicious:        "🟡",
+	PossiblyMalicious: "🟠",
 	Malicious:         "👹",
 }
 

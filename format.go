@@ -16,6 +16,21 @@ type MessageInput struct {
 	Via []string
 }
 
+func scoreKind(i int) Kind {
+	switch i {
+	case 0:
+		return Unknown
+	case 1:
+		return Harmless
+	case 2:
+		return Suspicious
+	case 3:
+		return PossiblyMalicious
+	default:
+		return Malicious
+	}
+}
+
 func Format(m MessageInput, fancy bool) *slack.Message {
 	row := m.Row
 
@@ -25,26 +40,26 @@ func Format(m MessageInput, fancy bool) *slack.Message {
 	}
 
 	t := time.Unix(row.UNIXTime, 0)
-	title := fmt.Sprintf("%s — %s @%s %s", row.Kind, id, row.Decorations["computer_name"], t.Format(time.TimeOnly))
+	title := fmt.Sprintf("%s %s — %s @%s %s", KindToEmoji[scoreKind(row.Score)], row.Kind, id, row.Decorations["computer_name"], t.Format(time.TimeOnly))
 
 	var content []*slack.SectionBlock
 	kind := "unknown"
 
 	if !fancy {
-		klog.Infof("using plain format for %+v", row.Row)
+		klog.V(1).Infof("using plain format for %+v", row.Row)
 		kind = "plain"
 		content = plainFormat(row.Row, row.VirusTotal)
 	} else if row.Row["p0_name"] != "" {
 		kind = "tree"
-		klog.Infof("using tree format for %+v", row.Row)
+		klog.V(1).Infof("using tree format for %+v", row.Row)
 		content = treeFormat(row.Row, row.VirusTotal)
 	} else {
 		kind = "table"
-		klog.Infof("using table format for %+v", row.Row)
+		klog.V(1).Infof("using table format for %+v", row.Row)
 		content = tableFormat(row.Row, row.VirusTotal, false)
 	}
 
-	klog.Infof("%q returned %d content blocks: %s", kind, len(content), content)
+	klog.V(1).Infof("%q returned %d content blocks: %s", kind, len(content), content)
 
 	titleBlock := slack.NewHeaderBlock(slack.NewTextBlockObject(slack.PlainTextType, title, false, false))
 
@@ -53,6 +68,10 @@ func Format(m MessageInput, fancy bool) *slack.Message {
 	for _, c := range content {
 		msg = slack.AddBlockMessage(msg, c)
 	}
+	if row.Interpretation != "" {
+		msg = slack.AddBlockMessage(msg, slack.NewSectionBlock(slack.NewTextBlockObject(slack.MarkdownType, fmt.Sprintf("AI: %s", row.Interpretation), false, false), nil, nil))
+	}
+
 	return &msg
 }
 
@@ -61,7 +80,7 @@ func wordWrap(s string, max int, indent int) string {
 	var sb strings.Builder
 	for i := 0; i < len(s); i++ {
 		if i > 0 && i%max == 0 && i != len(s) {
-			klog.Infof("wrap %s at %d / %d", s, i, len(s))
+			klog.V(1).Infof("wrap %s at %d / %d", s, i, len(s))
 			sb.WriteString("\n")
 			sb.WriteString(strings.Repeat(" ", indent))
 		}
@@ -71,7 +90,7 @@ func wordWrap(s string, max int, indent int) string {
 }
 
 func treeLine(prefix string, row Row, vr VTRow, level int) string {
-	klog.Infof("treeline row: [[%+v]]", row)
+	klog.V(1).Infof("treeline row: [[%+v]]", row)
 
 	uid := row[fmt.Sprintf("%suid", prefix)]
 	euid := row[fmt.Sprintf("%seuid", prefix)]
@@ -116,7 +135,7 @@ func treeLine(prefix string, row Row, vr VTRow, level int) string {
 	}
 	sb.WriteString(fmt.Sprintf("%s\n", wordWrap(cmd, 78-level, level+2)))
 	sb.WriteString(strings.Repeat(" ", level))
-	klog.Infof("env: %s", env)
+	klog.V(1).Infof("env: %s", env)
 	sb.WriteString(fmt.Sprintf("┃ %s\n", env))
 
 	keys := []string{}
@@ -176,7 +195,7 @@ func formatVirusTotal(v *VTResult) string {
 }
 
 func treeFormat(row Row, vr VTRow) []*slack.SectionBlock {
-	klog.Infof("tree format row: %s\n\nvt: %+v", row, vr)
+	klog.V(1).Infof("tree format row: %s\n\nvt: %+v", row, vr)
 
 	var sb strings.Builder
 	sb.WriteString("```")
@@ -195,7 +214,7 @@ func treeFormat(row Row, vr VTRow) []*slack.SectionBlock {
 
 	sb.WriteString("```")
 
-	klog.Infof("TREE FORMAT (%d bytes): %s", len(sb.String()), sb.String())
+	klog.V(1).Infof("TREE FORMAT (%d bytes): %s", len(sb.String()), sb.String())
 	blocks := []*slack.SectionBlock{slack.NewSectionBlock(slack.NewTextBlockObject(slack.MarkdownType, sb.String(), false, false), nil, nil)}
 	// print extra non-process fields
 	blocks = append(blocks, tableFormat(row, vr, true)...)
@@ -203,7 +222,7 @@ func treeFormat(row Row, vr VTRow) []*slack.SectionBlock {
 }
 
 func plainFormat(r Row, vr VTRow) []*slack.SectionBlock {
-	klog.Infof("plain format row: %s\n\nvt: %+v", r, vr)
+	klog.V(1).Infof("plain format row: %s\n\nvt: %+v", r, vr)
 
 	keys := []string{}
 	for k := range r {
@@ -256,7 +275,7 @@ func plainFormat(r Row, vr VTRow) []*slack.SectionBlock {
 }
 
 func tableFormat(r Row, vr VTRow, skipProcesses bool) []*slack.SectionBlock {
-	klog.Infof("table format row: %s\n\nvt: %+v", r, vr)
+	klog.V(1).Infof("table format row: %s\n\nvt: %+v", r, vr)
 
 	keys := []string{}
 	for k := range r {
