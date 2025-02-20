@@ -75,7 +75,6 @@ func vtCacheGet(c *vt.Client, key string) (*vt.Object, error) {
 }
 
 func vtInterpret(c *vt.Client, key string) (*VTResult, error) {
-
 	if strings.HasPrefix(key, "/") {
 		klog.Warningf("passed weird key: %s", key)
 		return nil, nil

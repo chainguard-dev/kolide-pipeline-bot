@@ -103,7 +103,6 @@ func getRows(ctx context.Context, bucket *storage.BucketHandle, vtc *vt.Client, 
 		// Inconsistency warning: we've seen records returned as an array and as a struct
 		out := OutFile{}
 		err = json.Unmarshal(body, &out)
-
 		// Try again by decoding it as an array
 		if err != nil {
 			outArr := []OutFile{}

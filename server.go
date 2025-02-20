@@ -133,7 +133,6 @@ func (s *Server) Refresh() http.HandlerFunc {
 		if _, err := w.Write([]byte(out)); err != nil {
 			klog.Errorf("writing threadz response: %d", err)
 		}
-
 	}
 }
 

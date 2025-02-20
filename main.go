@@ -161,5 +161,4 @@ func main() {
 		}
 		pq[d] = []*DecoratedRow{}
 	}
-
 }
