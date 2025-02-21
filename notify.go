@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -156,13 +157,19 @@ func (n *Notifier) saveThread(user string, row DecoratedRow, text, ts string) *T
 // isDuplicate checks if the message is an exact duplicate or a fuzzy duplicate
 func (n *Notifier) recentDupe(msg string) bool {
 	munged := mungeMsg(msg)
-	klog.Infof("dupe munge: %s", munged)
 	if n.lastNotification[munged].IsZero() {
-		klog.V(1).Infof("no dupe for %s", munged)
+		klog.Infof("no dupe of %s", munged)
 		return false
 	}
-	klog.Infof("found dupe @ %s for %s", n.lastNotification[munged], munged)
-	return time.Since(n.lastNotification[munged]) < maxDupeTime
+
+	age := time.Since(n.lastNotification[munged])
+	if age < maxDupeTime {
+		klog.Infof("fresh dupe @ %s for %s [age=%s]", n.lastNotification[munged], munged, age)
+		return true
+	}
+
+	klog.Infof("stale dupe @ %s for %s [age=%s]", n.lastNotification[munged], munged, age)
+	return false
 }
 
 // saveMsg saves messages for the duplicate detector
@@ -181,10 +188,24 @@ func mungeMsg(msg string) string {
 	new = fuzzyAlphaNum.ReplaceAllString(new, "")
 	new = fuzzyNumValue.ReplaceAllString(new, "")
 	new = nonAlpha.ReplaceAllString(new, " ")
-	return new
+
+	uniq := map[string]bool{}
+	for _, word := range strings.Split(new, " ") {
+		if len(word) > 2 {
+			uniq[word] = true
+		}
+	}
+
+	parts := []string{}
+	for k := range uniq {
+		parts = append(parts, k)
+	}
+	sort.Strings(parts)
+	return strings.Join(parts, "/")
 }
 
 func messageText(msg *slack.Message) string {
+	// the text seems to be hidden away in private structs, so we marshal it out?
 	j, err := json.Marshal(msg.Msg.Blocks.BlockSet)
 	if err != nil {
 		panic(fmt.Sprintf("unable to marshal: %v", err))
