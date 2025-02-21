@@ -26,7 +26,7 @@ var (
 	maxDupeTime = time.Hour * 24 * 5
 	// Follow-up to threads that are within this time period
 	relationTime    = time.Hour
-	maxRelationTime = time.Hour * 4
+	maxRelationTime = time.Hour * 12
 )
 
 func NewNotifier() Notifier {
