@@ -21,12 +21,15 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
 	"cloud.google.com/go/storage"
 	"github.com/VirusTotal/vt-go"
 	"github.com/slack-go/slack"
+
+	"cloud.google.com/go/vertexai/genai"
 	"k8s.io/klog/v2"
 )
 
@@ -36,8 +39,8 @@ var (
 	excludeSubDirsFlag = flag.String("exclude-subdirs", "", "exclude alerts for this comma-separated list of subdirectories")
 	channelFlag        = flag.String("channel-id", "", "Slack channel to post to (required for replies)")
 	serveFlag          = flag.Bool("serve", false, "")
-	maxAgeFlag         = flag.Duration("max-age", 30*time.Minute, "Maximum age of events to include (for best use, use at least 2X your trigger time)")
-	maxNoticesFlag     = flag.Int("max-notices-per-kind", 5, "Maximum notices per kind (spam reduction)")
+	maxAgeFlag         = flag.Duration("max-age", 60*time.Minute, "Maximum age of events to include (for best use, use at least 2X your trigger time)")
+	maxNoticesFlag     = flag.Int("max-notices-per-kind", 3, "Maximum notices per kind (spam reduction)")
 )
 
 func main() {
@@ -70,6 +73,18 @@ func main() {
 	excludeSubDirs := os.Getenv("EXCLUDE_SUBDIRS")
 	if *excludeSubDirsFlag != "" {
 		excludeSubDirs = *excludeSubDirsFlag
+	}
+
+	klog.Infof("genai auth: %s [%s]", os.Getenv("GCP_PROJECT_ID"), os.Getenv("GCP_REGION"))
+	ai, err := genai.NewClient(ctx, os.Getenv("GCP_PROJECT_ID"), os.Getenv("GCP_REGION"))
+	if err != nil {
+		log.Fatalf("genai client: %v", err)
+	}
+
+	model := ai.GenerativeModel("gemini-2.0-flash")
+
+	if err := scoreRow(ctx, model, &DecoratedRow{Kind: "ai-test"}); err != nil {
+		klog.Exitf("AI test failed: %v\nDo you have 'Vertex AI User' access?")
 	}
 
 	var s *slack.Client
@@ -114,24 +129,41 @@ func main() {
 			Addr:              fmt.Sprintf(":%s", port),
 			MaxNoticesPerKind: *maxNoticesFlag,
 			VirusTotalClient:  vtClient,
+			VertexModel:       model,
 		})
 	}
 
 	rows := getRows(ctx, bucket, vtClient, cc)
 	klog.Infof("collected %d rows", len(rows))
-	notifier := NewNotifier()
 
+	notifier := NewNotifier()
 	total := map[string]int{}
+	pq := map[string][]*DecoratedRow{}
 
 	for _, r := range rows {
+		klog.Infof("collected %s from %s: %s", r.Kind, r.Decorations["computer_name"], r.Source)
 		total[r.Kind]++
 		if total[r.Kind] > *maxNoticesFlag {
 			klog.Warningf("notification overflow for %s (%d), will not notify for: %s", r.Kind, total[r.Kind], r.Row)
 			continue
 		}
-		if err := notifier.Notify(s, channel, r); err != nil {
-			klog.Errorf("notify error: %v", err)
-		}
+
+		scoreRow(ctx, model, r)
+		enqueueRow(ctx, pq, r)
 	}
 
+	matches := priorityDevices(pq, 2)
+	klog.Infof("devices to notify for: %v", matches)
+	for _, d := range matches {
+		rows := pq[d]
+		sort.Slice(rows, func(i, j int) bool {
+			return rows[i].Score > rows[j].Score
+		})
+		for _, r := range rows {
+			if err := notifier.Notify(s, channel, *r); err != nil {
+				klog.Errorf("notify error: %v", err)
+			}
+		}
+		pq[d] = []*DecoratedRow{}
+	}
 }

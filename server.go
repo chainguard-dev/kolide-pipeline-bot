@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"net/http"
 	"runtime"
+	"sort"
 	"sync"
 	"time"
 
 	"cloud.google.com/go/storage"
+	"cloud.google.com/go/vertexai/genai"
 	"github.com/VirusTotal/vt-go"
 	"github.com/slack-go/slack"
 	"k8s.io/klog/v2"
@@ -24,10 +26,12 @@ func Serve(_ context.Context, sc *Config) {
 		maxNoticesPerKind: sc.MaxNoticesPerKind,
 		lastNotification:  map[string]time.Time{},
 		vtc:               sc.VirusTotalClient,
+		model:             sc.VertexModel,
+		pq:                map[string][]*DecoratedRow{},
 	}
 	http.HandleFunc("/refreshz", s.Refresh())
-	http.HandleFunc("/healthz", s.Healthz())
-	http.HandleFunc("/threadz", s.Threadz())
+	http.HandleFunc("/x-healthz", s.Healthz())
+	http.HandleFunc("/x-threadz", s.Threadz())
 	klog.Infof("Config: %+v", sc)
 	klog.Infof("Listening on %s ...", sc.Addr)
 	if err := http.ListenAndServe(sc.Addr, nil); err != nil {
@@ -43,6 +47,7 @@ type Config struct {
 	Channel           string
 	MaxNoticesPerKind int
 	VirusTotalClient  *vt.Client
+	VertexModel       *genai.GenerativeModel
 }
 
 type Server struct {
@@ -56,10 +61,13 @@ type Server struct {
 	maxNoticesPerKind int
 	vtc               *vt.Client
 	running           sync.Mutex
+	model             *genai.GenerativeModel
+	pq                map[string][]*DecoratedRow
 }
 
 func (s *Server) Refresh() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
 		klog.Infof("%s: %s %s", r.RemoteAddr, r.Method, r.URL)
 
 		klog.Infof("attempting to lock the mutex ...")
@@ -79,7 +87,7 @@ func (s *Server) Refresh() http.HandlerFunc {
 		}
 
 		refreshStartedAt := time.Now()
-		rows := getRows(r.Context(), s.bucket, s.vtc, s.collectConfig)
+		rows := getRows(ctx, s.bucket, s.vtc, s.collectConfig)
 		klog.Infof("collected %d rows", len(rows))
 
 		// Record the last refresh as the time just before getRows() is called,
@@ -91,6 +99,7 @@ func (s *Server) Refresh() http.HandlerFunc {
 
 		total := map[string]int{}
 
+		klog.Infof("processing %d rows ...", len(rows))
 		for _, r := range rows {
 			total[r.Kind]++
 			if total[r.Kind] > s.maxNoticesPerKind {
@@ -98,19 +107,40 @@ func (s *Server) Refresh() http.HandlerFunc {
 				continue
 			}
 
-			if err := s.notifier.Notify(s.slack, s.channel, r); err != nil {
-				klog.Errorf("notify error: %v", err)
-				continue
+			klog.Infof("scoring %q", r.Kind)
+			if err := scoreRow(ctx, s.model, r); err != nil {
+				klog.Errorf("score: %v", err)
+			}
+			klog.Infof("score: %d", r.Score)
+			enqueueRow(ctx, s.pq, r)
+		}
+
+		matches := priorityDevices(s.pq, 2)
+		klog.Infof("devices to notify for: %v", matches)
+
+		notifications := 0
+		for _, d := range matches {
+			rows := s.pq[d]
+			sort.Slice(rows, func(i, j int) bool {
+				return rows[i].Score > rows[j].Score
+			})
+
+			for _, r := range rows {
+				if err := s.notifier.Notify(s.slack, s.channel, *r); err != nil {
+					klog.Errorf("notify error: %v", err)
+				}
+				notifications++
 			}
 
+			klog.Infof("emptying priority queue for %s", d)
+			s.pq[d] = []*DecoratedRow{}
 		}
 
 		w.WriteHeader(http.StatusOK)
-		out := fmt.Sprintf("%d events -- %s", len(rows), duration)
+		out := fmt.Sprintf("%d events, %d notifications in %s", len(rows), notifications, duration)
 		if _, err := w.Write([]byte(out)); err != nil {
 			klog.Errorf("writing threadz response: %d", err)
 		}
-
 	}
 }
 
