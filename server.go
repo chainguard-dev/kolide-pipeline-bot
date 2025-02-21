@@ -107,9 +107,11 @@ func (s *Server) Refresh() http.HandlerFunc {
 				continue
 			}
 
+			klog.Infof("scoring %q", r.Kind)
 			if err := scoreRow(ctx, s.model, r); err != nil {
 				klog.Errorf("score: %v", err)
 			}
+			klog.Infof("score: %d", r.Score)
 			enqueueRow(ctx, s.pq, r)
 		}
 

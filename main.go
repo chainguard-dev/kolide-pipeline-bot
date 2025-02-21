@@ -39,7 +39,7 @@ var (
 	excludeSubDirsFlag = flag.String("exclude-subdirs", "", "exclude alerts for this comma-separated list of subdirectories")
 	channelFlag        = flag.String("channel-id", "", "Slack channel to post to (required for replies)")
 	serveFlag          = flag.Bool("serve", false, "")
-	maxAgeFlag         = flag.Duration("max-age", 15*time.Minute, "Maximum age of events to include (for best use, use at least 2X your trigger time)")
+	maxAgeFlag         = flag.Duration("max-age", 60*time.Minute, "Maximum age of events to include (for best use, use at least 2X your trigger time)")
 	maxNoticesFlag     = flag.Int("max-notices-per-kind", 3, "Maximum notices per kind (spam reduction)")
 )
 
@@ -82,6 +82,11 @@ func main() {
 	}
 
 	model := ai.GenerativeModel("gemini-2.0-flash")
+
+	if err := scoreRow(ctx, model, &DecoratedRow{Kind: "ai-test"}); err != nil {
+		klog.Exitf("AI test failed: %v\nDo you have 'Vertex AI User' access?")
+	}
+
 	var s *slack.Client
 
 	token := os.Getenv("SLACK_ACCESS_TOKEN")

@@ -78,7 +78,7 @@ func getRows(ctx context.Context, bucket *storage.BucketHandle, vtc *vt.Client, 
 
 		kind := filepath.Base(filepath.Dir(filepath.Dir(attrs.Name)))
 		if kind != lastKind {
-			klog.Infof("searching %q for added rows", kind)
+			klog.Infof("searching %q ...", kind)
 			lastKind = kind
 			maxEmptySize = 0
 		}
@@ -96,11 +96,11 @@ func getRows(ctx context.Context, bucket *storage.BucketHandle, vtc *vt.Client, 
 		}
 
 		if attrs.Size <= maxEmptySize {
-			klog.Infof("skipping %s -- smaller than %d bytes", attrs.Name, attrs.Size)
+			klog.V(1).Infof("skipping %s -- smaller than %d bytes", attrs.Name, attrs.Size)
 			continue
 		}
 
-		klog.Infof("reading: %+v (%d bytes)", attrs.Name, attrs.Size)
+		klog.V(1).Infof("reading: %+v (%d bytes)", attrs.Name, attrs.Size)
 		rc, err := bucket.Object(attrs.Name).NewReader(ctx)
 		if err != nil {
 			klog.Fatal(err)

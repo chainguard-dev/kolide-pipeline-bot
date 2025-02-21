@@ -30,7 +30,7 @@ func priorityDevices(pq map[string][]*DecoratedRow, minScore int) []string {
 		if len(rows) == 0 {
 			continue
 		}
-		klog.Infof("priority devices: %q - analyzing %d rows", device, len(rows))
+		klog.Infof("%s: analyzing %d row queue ...", device, len(rows))
 		score := 0
 		seen := map[string]bool{}
 		sort.Slice(rows, func(i, j int) bool {
