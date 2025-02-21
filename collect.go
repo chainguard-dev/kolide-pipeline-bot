@@ -64,7 +64,7 @@ func getRows(ctx context.Context, bucket *storage.BucketHandle, vtc *vt.Client, 
 
 	rows := []*DecoratedRow{}
 	seen := map[string]bool{}
-	maxEmptySize := int64(1024)
+	maxEmptySize := int64(256)
 
 	for {
 		attrs, err := it.Next()
