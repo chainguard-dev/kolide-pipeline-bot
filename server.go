@@ -30,8 +30,8 @@ func Serve(_ context.Context, sc *Config) {
 		pq:                map[string][]*DecoratedRow{},
 	}
 	http.HandleFunc("/refreshz", s.Refresh())
-	http.HandleFunc("/healthz", s.Healthz())
-	http.HandleFunc("/threadz", s.Threadz())
+	http.HandleFunc("/x-healthz", s.Healthz())
+	http.HandleFunc("/x-threadz", s.Threadz())
 	klog.Infof("Config: %+v", sc)
 	klog.Infof("Listening on %s ...", sc.Addr)
 	if err := http.ListenAndServe(sc.Addr, nil); err != nil {
@@ -99,6 +99,7 @@ func (s *Server) Refresh() http.HandlerFunc {
 
 		total := map[string]int{}
 
+		klog.Infof("processing %d rows ...", len(rows))
 		for _, r := range rows {
 			total[r.Kind]++
 			if total[r.Kind] > s.maxNoticesPerKind {
@@ -106,25 +107,30 @@ func (s *Server) Refresh() http.HandlerFunc {
 				continue
 			}
 
-			scoreRow(ctx, s.model, r)
+			if err := scoreRow(ctx, s.model, r); err != nil {
+				klog.Errorf("score: %v", err)
+			}
 			enqueueRow(ctx, s.pq, r)
-
 		}
 
 		matches := priorityDevices(s.pq, 2)
 		klog.Infof("devices to notify for: %v", matches)
+
 		notifications := 0
 		for _, d := range matches {
 			rows := s.pq[d]
 			sort.Slice(rows, func(i, j int) bool {
 				return rows[i].Score > rows[j].Score
 			})
+
 			for _, r := range rows {
 				if err := s.notifier.Notify(s.slack, s.channel, *r); err != nil {
-					notifications++
 					klog.Errorf("notify error: %v", err)
 				}
+				notifications++
 			}
+
+			klog.Infof("emptying priority queue for %s", d)
 			s.pq[d] = []*DecoratedRow{}
 		}
 

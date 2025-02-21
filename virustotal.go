@@ -55,20 +55,20 @@ func vtCacheGet(c *vt.Client, key string) (*vt.Object, error) {
 	}
 
 	if v := vtDumbCache[key]; v != nil {
-		klog.Infof("cached[%v]: %+v", key, v)
+		klog.V(1).Infof("cached[%v]: %+v", key, v)
 		return v, nil
 	}
 
 	v, err := c.GetObject(vt.URL(key))
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
-			klog.Infof("%s not found", key)
+			klog.V(1).Infof("%s not found", key)
 			return v, nil
 		}
 
 		return nil, fmt.Errorf("get object: %w", err)
 	}
-	klog.Infof("uncached[%v]: %+v", key, v)
+	klog.V(1).Infof("uncached[%v]: %+v", key, v)
 
 	vtDumbCache[key] = v
 	return v, nil
@@ -171,7 +171,7 @@ func vtInterpret(c *vt.Client, key string) (*VTResult, error) {
 
 	as, err := vo.GetString("as_owner")
 	if err != nil {
-		klog.Errorf("as_owner: %v", err)
+		klog.V(1).Infof("as_owner: %v", err)
 	}
 
 	if as != "" && r.Vendor == "" {
@@ -180,7 +180,7 @@ func vtInterpret(c *vt.Client, key string) (*VTResult, error) {
 
 	co, err := vo.GetString("country")
 	if err != nil {
-		klog.Errorf("country: %v", err)
+		klog.V(1).Infof("country: %v", err)
 	}
 	if co != "" {
 		r.Vendor = fmt.Sprintf("%s [%s]", r.Vendor, r.Country)
@@ -214,7 +214,7 @@ func vtMetadata(r Row, c *vt.Client) (VTRow, error) {
 				return vr, fmt.Errorf("get object: %w", err)
 			}
 			vr[k] = vs
-			klog.Infof("VT[%s]: %s", k, vs)
+			klog.V(1).Infof("VT[%s]: %s", k, vs)
 		}
 
 		if strings.Contains(k, "remote_address") {
@@ -223,7 +223,7 @@ func vtMetadata(r Row, c *vt.Client) (VTRow, error) {
 				return vr, fmt.Errorf("get object: %w", err)
 			}
 			vr[k] = vs
-			klog.Infof("VT[%s]: %s", k, vs)
+			klog.V(1).Infof("VT[%s]: %s", k, vs)
 		}
 	}
 

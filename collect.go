@@ -54,13 +54,17 @@ type CollectConfig struct {
 }
 
 func getRows(ctx context.Context, bucket *storage.BucketHandle, vtc *vt.Client, cc *CollectConfig) []*DecoratedRow {
+	start := time.Now()
 	klog.Infof("finding items matching: %+v ...", cc)
-	it := bucket.Objects(ctx, &storage.Query{Prefix: cc.Prefix})
+
+	q := &storage.Query{Prefix: cc.Prefix}
+	q.SetAttrSelection([]string{"Name", "Created", "Size"})
+	it := bucket.Objects(ctx, q)
 	lastKind := ""
 
 	rows := []*DecoratedRow{}
 	seen := map[string]bool{}
-	maxEmptySize := int64(128)
+	maxEmptySize := int64(1024)
 
 	for {
 		attrs, err := it.Next()
@@ -70,6 +74,13 @@ func getRows(ctx context.Context, bucket *storage.BucketHandle, vtc *vt.Client, 
 		if err != nil {
 			klog.Errorf("error fetching objects: %v", err)
 			break
+		}
+
+		kind := filepath.Base(filepath.Dir(filepath.Dir(attrs.Name)))
+		if kind != lastKind {
+			klog.Infof("searching %q for added rows", kind)
+			lastKind = kind
+			maxEmptySize = 0
 		}
 
 		matched := false
@@ -85,7 +96,7 @@ func getRows(ctx context.Context, bucket *storage.BucketHandle, vtc *vt.Client, 
 		}
 
 		if attrs.Size <= maxEmptySize {
-			klog.V(1).Infof("skipping %s -- smaller than %d bytes", attrs.Name, attrs.Size)
+			klog.Infof("skipping %s -- smaller than %d bytes", attrs.Name, attrs.Size)
 			continue
 		}
 
@@ -100,26 +111,8 @@ func getRows(ctx context.Context, bucket *storage.BucketHandle, vtc *vt.Client, 
 			klog.Fatal(err)
 		}
 
-		// Inconsistency warning: we've seen records returned as an array and as a struct
 		out := OutFile{}
 		err = json.Unmarshal(body, &out)
-		// Try again by decoding it as an array
-		if err != nil {
-			outArr := []OutFile{}
-			errArr := json.Unmarshal(body, &outArr)
-			if errArr != nil {
-				klog.Errorf("unmarshal(%s): %v\nsecond attempt: %v", body, err, errArr)
-				continue
-			}
-			out = outArr[0]
-		}
-
-		kind := filepath.Base(filepath.Dir(filepath.Dir(attrs.Name)))
-		if kind != lastKind {
-			klog.Infof("=== kind: %s ===", kind)
-			lastKind = kind
-			maxEmptySize = 0
-		}
 
 		if len(out.DiffResults.Added) == 0 && len(out.DiffResults.Removed) == 0 {
 			if attrs.Size > int64(maxEmptySize) {
@@ -135,7 +128,7 @@ func getRows(ctx context.Context, bucket *storage.BucketHandle, vtc *vt.Client, 
 				continue
 			}
 
-			klog.Infof("collecting: %s", msg)
+			klog.Infof("diff added: %s", msg)
 			vt, err := vtMetadata(r, vtc)
 			if err != nil {
 				klog.Errorf("failed to fetch VT metadata: %v", err)
@@ -164,6 +157,6 @@ func getRows(ctx context.Context, bucket *storage.BucketHandle, vtc *vt.Client, 
 		}
 	}
 
-	klog.Infof("collection complete: %d rows found", len(rows))
+	klog.Infof("collection complete: %d rows found in %s", len(rows), time.Since(start))
 	return rows
 }

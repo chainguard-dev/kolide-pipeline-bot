@@ -27,6 +27,9 @@ func priorityDevices(pq map[string][]*DecoratedRow, minScore int) []string {
 	matches := []string{}
 
 	for device, rows := range pq {
+		if len(rows) == 0 {
+			continue
+		}
 		klog.Infof("priority devices: %q - analyzing %d rows", device, len(rows))
 		score := 0
 		seen := map[string]bool{}

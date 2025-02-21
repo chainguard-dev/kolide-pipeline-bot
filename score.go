@@ -11,6 +11,9 @@ import (
 )
 
 func scoreRow(ctx context.Context, model *genai.GenerativeModel, row *DecoratedRow) error {
+	// set a default score early in case we have to exit with an error
+	row.Score = 1
+
 	score := 1
 	if strings.HasPrefix(row.Kind, "2") {
 		score = 2
@@ -21,7 +24,10 @@ func scoreRow(ctx context.Context, model *genai.GenerativeModel, row *DecoratedR
 
 	device := row.Decorations["computer_name"]
 	klog.Infof("base score for %s (%s): %d", row.Kind, device, score)
-	bs, _ := json.MarshalIndent(row, "", "    ")
+	bs, err := json.MarshalIndent(row, "", "    ")
+	if err != nil {
+		return err
+	}
 
 	prompt := genai.Text(fmt.Sprintf(`
 		This is the JSON output from Kolide, based on an osquery rule named %q that is part of osquery-defense-kit.
@@ -59,5 +65,6 @@ func scoreRow(ctx context.Context, model *genai.GenerativeModel, row *DecoratedR
 	}
 
 	row.Score = score + boost
+	klog.Infof("setting score %s (%s): %d [boost=%d]", row.Kind, device, score, boost)
 	return nil
 }
