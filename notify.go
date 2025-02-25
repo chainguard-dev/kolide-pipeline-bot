@@ -71,7 +71,6 @@ func (n *Notifier) findThread(user string, relations map[string]string) (*Thread
 	var related *Thread
 	var via []string
 
-	klog.V(1).Infof("finding thread for %s matching %+v", user, relations)
 	// Rough logic:
 	//
 	// - prefer recent threads that contain the same path
@@ -93,7 +92,7 @@ func (n *Notifier) findThread(user string, relations map[string]string) (*Thread
 
 		if len(matches) > 0 && (related == nil || related.Updated.Before(t.Updated)) {
 			related = t
-			klog.V(1).Infof("newer thread via %s: %+v", matches, related)
+			klog.Infof("found thread for %s via %s: %+v", user, matches, related)
 			via = matches
 		}
 
@@ -104,6 +103,7 @@ func (n *Notifier) findThread(user string, relations map[string]string) (*Thread
 
 	if related == nil && mostRecent != nil {
 		related = mostRecent
+		klog.Infof("found thread for %s via recently: %+v", user, related)
 		via = append(via, "recency")
 	}
 
@@ -122,6 +122,7 @@ func (n *Notifier) findThread(user string, relations map[string]string) (*Thread
 		}
 	}
 
+	klog.Infof("%s: among %d threads, no obvious candidates to follow-up on", user, n.threads[user])
 	return nil, nil
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"cloud.google.com/go/vertexai/genai"
@@ -11,19 +12,30 @@ import (
 )
 
 func scoreRow(ctx context.Context, model *genai.GenerativeModel, row *DecoratedRow) error {
+	kind := row.Kind
+	prefix, after, _ := strings.Cut(kind, "_")
+	score := int(0)
 
-	score := 1
-	if strings.HasPrefix(row.Kind, "2") {
-		score = 2
-	}
-	if strings.HasPrefix(row.Kind, "3") {
-		score = 3
+	i, err := strconv.ParseInt(prefix, 10, 0)
+	if err != nil {
+		klog.Errorf("unable to get score from prefix %q: %v", prefix, err)
+	} else {
+		score = int(i)
+		kind = after
 	}
 
 	// set a default score early in case we have to exit with an error
 	device := row.Decorations["computer_name"]
-	klog.Infof("base score for %s (%s): %d", row.Kind, device, score)
+	klog.Infof("%s:%s - base score: %d", row.Kind, device, score)
 	row.Score = score
+
+	for _, v := range row.VirusTotal {
+		if v.Score > NoOpinion {
+			modifier := (int(v.Score) - int(NoOpinion))
+			klog.Infof("%s:%s - adding +%d to score due to VirusTotal: %+v", device, kind, modifier, v)
+			row.Score = row.Score + modifier
+		}
+	}
 
 	bs, err := json.MarshalIndent(row, "", "    ")
 	if err != nil {
@@ -37,36 +49,39 @@ func scoreRow(ctx context.Context, model *genai.GenerativeModel, row *DecoratedR
 		The 'Decorations' struct contains information about the machine the query was run on.
 		The 'VirusTotal' struct contains any additional information that VirusTotal discovered about the process or hosts returned by the query. If the VirusTotal struct is empty, it may mean that VirusTotal wasn't available.
 
-		Return a single-word verdict of if this output is most likely benign, suspicious, or malicious, followed by a colon and a 5-10 word summary of the row.
+		Return a single-word verdict of if the behavior and process tree described by this is benign, undetermined, suspicious, or malicious, followed by a colon and a 5-10 word summary of the row.
 		`,
-		row.Kind))
+		kind))
 
-	klog.Infof("analyzying content: %s", bs)
+	klog.Infof("%s:%s - vertex input: %s", kind, device, bs)
 	resp, err := model.GenerateContent(ctx, genai.Text(string(bs)), prompt)
 	if err != nil {
 		return err
 	}
 
-	boost := 0
+	adjustment := 0
 	for _, c := range resp.Candidates {
 		p := c.Content.Parts[0]
-		klog.Infof("response: %s", p)
+		klog.Infof("%s:%s - vertex response: %s", kind, device, p)
 		verdict, _, _ := strings.Cut(fmt.Sprintf("%s", p), ": ")
 		switch {
 		case strings.Contains(strings.ToLower(verdict), "suspicious"):
-			boost = 1
+			adjustment = 1
 		case strings.Contains(strings.ToLower(verdict), "malicious"):
-			boost = 2
+			adjustment = 2
+		case strings.Contains(strings.ToLower(verdict), "benign"):
+			adjustment = -1
 		}
 
 		row.Interpretation = fmt.Sprintf("%s", p)
-		if boost > 0 {
-			klog.Infof("+%d score boost for %s (%s): %q", boost, row.Kind, device, p)
+		if adjustment != 0 {
+			klog.Infof("%s:%s - vertex score adjustment: %d", kind, device, adjustment)
 		}
 		break
 	}
 
-	row.Score = score + boost
-	klog.Infof("setting score %s (%s): %d [boost=%d]", row.Kind, device, score, boost)
+	row.Score = score + adjustment
+	row.Kind = kind
+	klog.Infof("%s:%s - final score: %d", kind, device, row.Score)
 	return nil
 }
