@@ -10,15 +10,6 @@ import (
 // enqueueRow adds rows to the priority queue for later reference
 func enqueueRow(ctx context.Context, pq map[string][]*DecoratedRow, row *DecoratedRow) {
 	device := row.Decorations["computer_name"]
-
-	for _, v := range row.VirusTotal {
-		if v.Kind > Undetected {
-			row.Score = row.Score + (int(v.Kind) - int(Undetected))
-			klog.Infof("increasing score due to virustotal info")
-		}
-	}
-
-	klog.Infof("enqueue[%s]: %s (score %d)", device, row.Kind, row.Score)
 	pq[device] = append(pq[device], row)
 }
 

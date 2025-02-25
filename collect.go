@@ -78,7 +78,7 @@ func getRows(ctx context.Context, bucket *storage.BucketHandle, vtc *vt.Client, 
 
 		kind := filepath.Base(filepath.Dir(filepath.Dir(attrs.Name)))
 		if kind != lastKind {
-			klog.Infof("searching %q ...", kind)
+			klog.V(1).Infof("searching %q ...", kind)
 			lastKind = kind
 			maxEmptySize = 0
 		}

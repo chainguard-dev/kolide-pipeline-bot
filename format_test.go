@@ -91,7 +91,7 @@ func TestFormat(t *testing.T) {
 						URL:   "https://www.virustotal.com/gui/file/1d6c2d03b51d9c06cfa33f32533352785f82697650695822e023d22be9cbcc19",
 						Tags:  []string{"64bits", "elf", "shared-lib"},
 						Found: true,
-						Kind:  Undetected,
+						Score: NoOpinion,
 					},
 					"p2_sha256": &VTResult{
 						URL: "https://www.virustotal.com/gui/file/aac5656e393dc19a801dfd81f3d333e7c6bf7bd288e74009fbadd851b57f7439",

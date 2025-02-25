@@ -13,35 +13,63 @@ type VTResult struct {
 	Found bool
 	Tags  []string
 
-	Name       string
-	Vendor     string
+	KnownHash bool
+	Name      string
+	Vendor    string
+
 	Reputation int64
+
+	MaliciousVotes  int
+	SuspiciousVotes int
+	HarmlessVotes   int
+	UndetectedVotes int
 
 	Country string
 
-	Kind Kind
+	Verdict string
+	Score   Kind
+
+	Raw *vt.Object
 }
 
 type Kind int
 
 const (
-	Unknown Kind = iota
+	MissingUnknown Kind = iota
 	HarmlessKnown
 	Harmless
-	Undetected
+	NoOpinion
+	PossiblySuspicious
 	Suspicious
 	PossiblyMalicious
 	Malicious
 )
 
 var KindToEmoji = map[Kind]string{
-	Unknown:           "❓",
-	HarmlessKnown:     "✅",
-	Harmless:          "🔵",
-	Undetected:        "⚫",
-	Suspicious:        "🟡",
-	PossiblyMalicious: "🟠",
-	Malicious:         "👹",
+	MissingUnknown:     "🤷",
+	HarmlessKnown:      "✅",
+	Harmless:           "🟢",
+	NoOpinion:          "🔵",
+	PossiblySuspicious: "🟡",
+	Suspicious:         "🟠",
+	PossiblyMalicious:  "🔴",
+	Malicious:          "👹",
+}
+
+func scoreToEmoji(score int) string {
+	// score of 0 == Harmless
+	return KindToEmoji[Kind(score)+Harmless]
+}
+
+var KindToString = map[Kind]string{
+	MissingUnknown:     "no_information_available",
+	HarmlessKnown:      "harmless_and_known",
+	Harmless:           "harmless",
+	NoOpinion:          "undetected_no_opinion",
+	PossiblySuspicious: "possibly_suspicious",
+	Suspicious:         "suspicious",
+	PossiblyMalicious:  "possibly_malicious",
+	Malicious:          "malicious",
 }
 
 type VTRow map[string]*VTResult
@@ -84,7 +112,9 @@ func vtInterpret(c *vt.Client, key string) (*VTResult, error) {
 	url = strings.Replace(url, "ip_addresses", "ip-address", 1)
 
 	r := &VTResult{
-		URL: url,
+		URL:     url,
+		Score:   MissingUnknown,
+		Verdict: KindToString[MissingUnknown],
 	}
 
 	vo, err := vtCacheGet(c, key)
@@ -95,6 +125,7 @@ func vtInterpret(c *vt.Client, key string) (*VTResult, error) {
 	if vo == nil {
 		return r, nil
 	}
+	r.Raw = vo
 	r.Found = true
 
 	ss, err := vo.GetStringSlice("tags")
@@ -128,45 +159,56 @@ func vtInterpret(c *vt.Client, key string) (*VTResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("last_analysis_stats.harmless: %w", err)
 	}
+	r.HarmlessVotes = int(harmless)
 
 	undetected, err := vo.GetInt64("last_analysis_stats.undetected")
 	if err != nil {
 		return nil, fmt.Errorf("last_analysis_stats.undetected: %w", err)
 	}
+	r.UndetectedVotes = int(undetected)
 
 	malicious, err := vo.GetInt64("last_analysis_stats.malicious")
 	if err != nil {
 		return nil, fmt.Errorf("last_analysis_stats.malicious: %w", err)
 	}
+	r.MaliciousVotes = int(malicious)
 
 	suspicious, err := vo.GetInt64("last_analysis_stats.suspicious")
 	if err != nil {
 		return nil, fmt.Errorf("last_analysis_stats.suspicious: %w", err)
 	}
+	r.SuspiciousVotes = int(suspicious)
+
+	klog.Infof("%s reputation: %d [harmless=%d, undetected=%d, malicious=%d, suspicious=%d]", key, reputation, harmless, undetected, malicious, suspicious)
 
 	switch {
-	case malicious > 3:
-		r.Kind = Malicious
+	case malicious > 2:
+		r.Score = Malicious
 	case malicious > 1:
-		r.Kind = PossiblyMalicious
+		r.Score = PossiblyMalicious
+	case suspicious > 2:
+		r.Score = Suspicious
 	case suspicious > 1:
-		r.Kind = Suspicious
+		r.Score = PossiblySuspicious
 	case harmless > 3:
-		r.Kind = Harmless
+		r.Score = Harmless
 	case undetected > 1:
-		r.Kind = Undetected
-	default:
-		r.Kind = Unknown
+		r.Score = NoOpinion
 	}
 
 	// Upgrade known
-	if r.Vendor != "" && r.Kind < Suspicious {
-		r.Kind = HarmlessKnown
+	if r.Vendor != "" && r.Score < Suspicious {
+		r.Score = HarmlessKnown
 	}
 
 	// Downgrade items with a poor reputation
-	if r.Reputation < 0 && r.Kind < Suspicious {
-		r.Kind = Suspicious
+	if r.Reputation < 0 && r.Score < Suspicious {
+		klog.Infof("downgrading to possibly suspicious due to poor reputation: %d", r.Reputation)
+		r.Score = PossiblySuspicious
+	}
+	if r.Reputation < -2 && r.Score < Suspicious {
+		klog.Infof("downgrading to suspicious due to poor reputation: %d", r.Reputation)
+		r.Score = Suspicious
 	}
 
 	as, err := vo.GetString("as_owner")
@@ -195,6 +237,7 @@ func vtInterpret(c *vt.Client, key string) (*VTResult, error) {
 		r.Name = strings.Join(sub, ",")
 	}
 
+	r.Verdict = KindToString[r.Score]
 	return r, nil
 }
 

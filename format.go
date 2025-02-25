@@ -16,21 +16,6 @@ type MessageInput struct {
 	Via []string
 }
 
-func scoreKind(i int) Kind {
-	switch i {
-	case 0:
-		return Unknown
-	case 1:
-		return Harmless
-	case 2:
-		return Suspicious
-	case 3:
-		return PossiblyMalicious
-	default:
-		return Malicious
-	}
-}
-
 func Format(m MessageInput, fancy bool) *slack.Message {
 	row := m.Row
 
@@ -40,7 +25,7 @@ func Format(m MessageInput, fancy bool) *slack.Message {
 	}
 
 	t := time.Unix(row.UNIXTime, 0)
-	title := fmt.Sprintf("%s %s — %s @%s %s", KindToEmoji[scoreKind(row.Score)], row.Kind, id, row.Decorations["computer_name"], t.Format(time.TimeOnly))
+	title := fmt.Sprintf("%s %s — %s @%s %s", scoreToEmoji(row.Score), row.Kind, id, row.Decorations["computer_name"], t.Format(time.TimeOnly))
 
 	var content []*slack.SectionBlock
 	kind := "unknown"
@@ -189,7 +174,7 @@ func formatVirusTotal(v *VTResult) string {
 		name = name[0:76] + "..."
 	}
 
-	s := fmt.Sprintf("<%s|%s %s>", v.URL, KindToEmoji[v.Kind], name)
+	s := fmt.Sprintf("<%s|%s %s>", v.URL, KindToEmoji[v.Score], name)
 	klog.Infof("VT: %s from %+v", s, v)
 	return s
 }
