@@ -56,6 +56,11 @@ var KindToEmoji = map[Kind]string{
 	Malicious:          "👹",
 }
 
+func scoreToEmoji(score int) string {
+	// score of 0 == Harmless
+	return KindToEmoji[Kind(score)+Harmless]
+}
+
 var KindToString = map[Kind]string{
 	MissingUnknown:     "no_information_available",
 	HarmlessKnown:      "harmless_and_known",

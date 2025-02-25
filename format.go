@@ -25,7 +25,7 @@ func Format(m MessageInput, fancy bool) *slack.Message {
 	}
 
 	t := time.Unix(row.UNIXTime, 0)
-	title := fmt.Sprintf("%s %s — %s @%s %s", KindToEmoji[Kind(row.Score)], row.Kind, id, row.Decorations["computer_name"], t.Format(time.TimeOnly))
+	title := fmt.Sprintf("%s %s — %s @%s %s", scoreToEmoji(row.Score), row.Kind, id, row.Decorations["computer_name"], t.Format(time.TimeOnly))
 
 	var content []*slack.SectionBlock
 	kind := "unknown"
