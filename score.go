@@ -50,6 +50,8 @@ func scoreRow(ctx context.Context, model *genai.GenerativeModel, row *DecoratedR
 		The 'VirusTotal' struct contains any additional information that VirusTotal discovered about the process or hosts returned by the query. If the VirusTotal struct is empty, it may mean that VirusTotal wasn't available.
 
 		Return a single-word verdict of if the behavior and process tree described by this is benign, undetermined, suspicious, or malicious, followed by a colon and a 5-10 word summary of the row.
+
+		If you are uncertain, your verdict should be undetermined.
 		`,
 		kind))
 

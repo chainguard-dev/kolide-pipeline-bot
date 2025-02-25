@@ -201,8 +201,8 @@ func vtInterpret(c *vt.Client, key string) (*VTResult, error) {
 		klog.Infof("downgrading to possibly suspicious due to poor reputation: %d", r.Reputation)
 		r.Score = PossiblySuspicious
 	}
-	if r.Reputation < 3 && r.Score < Suspicious {
-		klog.Infof("downgrading to possibly suspicious due to poor reputation: %d", r.Reputation)
+	if r.Reputation < -2 && r.Score < Suspicious {
+		klog.Infof("downgrading to suspicious due to poor reputation: %d", r.Reputation)
 		r.Score = Suspicious
 	}
 
