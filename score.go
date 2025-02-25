@@ -28,8 +28,12 @@ func scoreRow(ctx context.Context, model *genai.GenerativeModel, row *DecoratedR
 	device := row.Decorations["computer_name"]
 	klog.Infof("%s:%s - base score: %d", row.Kind, device, score)
 	row.Score = score
+	containsUnknownBinary := false
 
-	for _, v := range row.VirusTotal {
+	for k, v := range row.VirusTotal {
+		if (strings.Contains(k, "sha256") || strings.HasSuffix(k, "_hash")) && v.Score == MissingUnknown {
+			containsUnknownBinary = true
+		}
 		if v.Score > NoOpinion {
 			modifier := (int(v.Score) - int(NoOpinion))
 			klog.Infof("%s:%s - adding +%d to score due to VirusTotal: %+v", device, kind, modifier, v)
@@ -55,7 +59,6 @@ func scoreRow(ctx context.Context, model *genai.GenerativeModel, row *DecoratedR
 		`,
 		kind))
 
-	klog.Infof("%s:%s - vertex input: %s", kind, device, bs)
 	resp, err := model.GenerateContent(ctx, genai.Text(string(bs)), prompt)
 	if err != nil {
 		return err
@@ -72,7 +75,11 @@ func scoreRow(ctx context.Context, model *genai.GenerativeModel, row *DecoratedR
 		case strings.Contains(strings.ToLower(verdict), "malicious"):
 			adjustment = 2
 		case strings.Contains(strings.ToLower(verdict), "benign"):
-			adjustment = -1
+			if containsUnknownBinary {
+				klog.Infof("%s:%s - not adjusting benign result due to unknown binary", kind, device)
+			} else {
+				adjustment = -1
+			}
 		}
 
 		row.Interpretation = fmt.Sprintf("%s", p)

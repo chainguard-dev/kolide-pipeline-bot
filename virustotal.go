@@ -35,7 +35,7 @@ type VTResult struct {
 type Kind int
 
 const (
-	NoInformationAvailable Kind = iota
+	MissingUnknown Kind = iota
 	HarmlessKnown
 	Harmless
 	NoOpinion
@@ -46,25 +46,25 @@ const (
 )
 
 var KindToEmoji = map[Kind]string{
-	NoInformationAvailable: "🤷",
-	HarmlessKnown:          "✅",
-	Harmless:               "🟢",
-	NoOpinion:              "🔵",
-	PossiblySuspicious:     "🟡",
-	Suspicious:             "🟠",
-	PossiblyMalicious:      "🔴",
-	Malicious:              "👹",
+	MissingUnknown:     "🤷",
+	HarmlessKnown:      "✅",
+	Harmless:           "🟢",
+	NoOpinion:          "🔵",
+	PossiblySuspicious: "🟡",
+	Suspicious:         "🟠",
+	PossiblyMalicious:  "🔴",
+	Malicious:          "👹",
 }
 
 var KindToString = map[Kind]string{
-	NoInformationAvailable: "no_information_available",
-	HarmlessKnown:          "harmless_and_known",
-	Harmless:               "harmless",
-	NoOpinion:              "undetected_no_opinion",
-	PossiblySuspicious:     "possibly_suspicious",
-	Suspicious:             "suspicious",
-	PossiblyMalicious:      "possibly_malicious",
-	Malicious:              "malicious",
+	MissingUnknown:     "no_information_available",
+	HarmlessKnown:      "harmless_and_known",
+	Harmless:           "harmless",
+	NoOpinion:          "undetected_no_opinion",
+	PossiblySuspicious: "possibly_suspicious",
+	Suspicious:         "suspicious",
+	PossiblyMalicious:  "possibly_malicious",
+	Malicious:          "malicious",
 }
 
 type VTRow map[string]*VTResult
@@ -108,8 +108,8 @@ func vtInterpret(c *vt.Client, key string) (*VTResult, error) {
 
 	r := &VTResult{
 		URL:     url,
-		Score:   NoInformationAvailable,
-		Verdict: KindToString[NoInformationAvailable],
+		Score:   MissingUnknown,
+		Verdict: KindToString[MissingUnknown],
 	}
 
 	vo, err := vtCacheGet(c, key)
