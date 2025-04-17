@@ -122,7 +122,7 @@ func (n *Notifier) findThread(user string, relations map[string]string) (*Thread
 		}
 	}
 
-	klog.Infof("%s: among %d threads, no obvious candidates to follow-up on", user, n.threads[user])
+	klog.Infof("%s: among %d threads, no obvious candidates to follow-up on", user, len(n.threads[user]))
 	return nil, nil
 }
 

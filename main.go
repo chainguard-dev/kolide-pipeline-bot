@@ -81,10 +81,10 @@ func main() {
 		log.Fatalf("genai client: %v", err)
 	}
 
-	model := ai.GenerativeModel("gemini-2.0-flash")
+	model := ai.GenerativeModel("gemini-2.5-flash-preview-04-17")
 
 	if err := scoreRow(ctx, model, &DecoratedRow{Kind: "ai-test"}); err != nil {
-		klog.Exitf("AI test failed: %v\nDo you have 'Vertex AI User' access?")
+		klog.Exitf("AI test failed: %v\nDo you have 'Vertex AI User' access?", err)
 	}
 
 	var s *slack.Client
