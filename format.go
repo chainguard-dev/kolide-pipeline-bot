@@ -44,7 +44,7 @@ func Format(m MessageInput, fancy bool) *slack.Message {
 		content = tableFormat(row.Row, row.VirusTotal, false)
 	}
 
-	klog.V(1).Infof("%q returned %d content blocks: %s", kind, len(content), content)
+	klog.V(1).Infof("%q returned %d content blocks: %v", kind, len(content), content)
 
 	titleBlock := slack.NewHeaderBlock(slack.NewTextBlockObject(slack.PlainTextType, title, false, false))
 
@@ -63,7 +63,7 @@ func Format(m MessageInput, fancy bool) *slack.Message {
 func wordWrap(s string, max int, indent int) string {
 	// slow, but effective
 	var sb strings.Builder
-	for i := 0; i < len(s); i++ {
+	for i := range s {
 		if i > 0 && i%max == 0 && i != len(s) {
 			klog.V(1).Infof("wrap %s at %d / %d", s, i, len(s))
 			sb.WriteString("\n")

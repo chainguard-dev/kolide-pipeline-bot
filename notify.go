@@ -109,10 +109,7 @@ func (n *Notifier) findThread(user string, relations map[string]string) (*Thread
 
 	score := int(math.Ceil(math.Pow(float64(len(via)), 2) / 3))
 
-	threadMatchTime := relationTime * time.Duration(len(via))
-	if threadMatchTime > maxRelationTime {
-		threadMatchTime = maxRelationTime
-	}
+	threadMatchTime := min(relationTime*time.Duration(len(via)), maxRelationTime)
 
 	if related != nil {
 		if time.Since(related.Updated) < threadMatchTime {
@@ -122,7 +119,7 @@ func (n *Notifier) findThread(user string, relations map[string]string) (*Thread
 		}
 	}
 
-	klog.Infof("%s: among %d threads, no obvious candidates to follow-up on", user, n.threads[user])
+	klog.Infof("%s: among %d threads, no obvious candidates to follow-up on", user, len(n.threads[user]))
 	return nil, nil
 }
 
