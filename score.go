@@ -147,7 +147,7 @@ func scoreRow(ctx context.Context, ai *genai.Client, row *DecoratedRow) error {
 		for _, ps := range c.Content.Parts {
 			sb.WriteString(ps.Text)
 		}
-		p := sb.String()
+		p := strings.TrimSpace(sb.String())
 		// The prompt should prevent responses wrapped or prefixed with backticks,
 		// but trim them to be safe
 		p = strings.TrimPrefix(p, "```")
