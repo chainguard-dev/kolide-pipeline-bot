@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"cloud.google.com/go/storage"
-	"cloud.google.com/go/vertexai/genai"
 	"github.com/VirusTotal/vt-go"
 	"github.com/slack-go/slack"
+	"google.golang.org/genai"
 	"k8s.io/klog/v2"
 )
 
@@ -26,7 +26,7 @@ func Serve(_ context.Context, sc *Config) {
 		maxNoticesPerKind: sc.MaxNoticesPerKind,
 		lastNotification:  map[string]time.Time{},
 		vtc:               sc.VirusTotalClient,
-		model:             sc.VertexModel,
+		aic:               sc.VertexClient,
 		pq:                map[string][]*DecoratedRow{},
 	}
 	http.HandleFunc("/refreshz", s.Refresh())
@@ -47,7 +47,7 @@ type Config struct {
 	Channel           string
 	MaxNoticesPerKind int
 	VirusTotalClient  *vt.Client
-	VertexModel       *genai.GenerativeModel
+	VertexClient      *genai.Client
 }
 
 type Server struct {
@@ -61,7 +61,7 @@ type Server struct {
 	maxNoticesPerKind int
 	vtc               *vt.Client
 	running           sync.Mutex
-	model             *genai.GenerativeModel
+	aic               *genai.Client
 	pq                map[string][]*DecoratedRow
 }
 
@@ -108,7 +108,7 @@ func (s *Server) Refresh() http.HandlerFunc {
 			}
 
 			klog.Infof("scoring %q", r.Kind)
-			if err := scoreRow(ctx, s.model, r); err != nil {
+			if err := scoreRow(ctx, s.aic, r); err != nil {
 				klog.Errorf("score: %v", err)
 			}
 			klog.Infof("score: %d", r.Score)

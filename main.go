@@ -29,8 +29,15 @@ import (
 	"github.com/VirusTotal/vt-go"
 	"github.com/slack-go/slack"
 
-	"cloud.google.com/go/vertexai/genai"
+	"google.golang.org/genai"
+
 	"k8s.io/klog/v2"
+)
+
+const (
+	maxBudget  int32  = 24576
+	maxRetries int    = 3
+	modelName  string = "gemini-2.5-flash-preview-04-17"
 )
 
 var (
@@ -76,15 +83,18 @@ func main() {
 	}
 
 	klog.Infof("genai auth: %s [%s]", os.Getenv("GCP_PROJECT_ID"), os.Getenv("GCP_REGION"))
-	ai, err := genai.NewClient(ctx, os.Getenv("GCP_PROJECT_ID"), os.Getenv("GCP_REGION"))
+	ai, err := genai.NewClient(ctx,
+		&genai.ClientConfig{
+			Project:  os.Getenv("GCP_PROJECT_ID"),
+			Location: os.Getenv("GCP_REGION"),
+			Backend:  genai.BackendVertexAI,
+		})
 	if err != nil {
 		log.Fatalf("genai client: %v", err)
 	}
 
-	model := ai.GenerativeModel("gemini-2.0-flash")
-
-	if err := scoreRow(ctx, model, &DecoratedRow{Kind: "ai-test"}); err != nil {
-		klog.Exitf("AI test failed: %v\nDo you have 'Vertex AI User' access?")
+	if err := scoreRow(ctx, ai, &DecoratedRow{Kind: "ai-test"}); err != nil {
+		klog.Exitf("AI test failed: %v\nDo you have 'Vertex AI User' access?", err)
 	}
 
 	var s *slack.Client
@@ -129,7 +139,7 @@ func main() {
 			Addr:              fmt.Sprintf(":%s", port),
 			MaxNoticesPerKind: *maxNoticesFlag,
 			VirusTotalClient:  vtClient,
-			VertexModel:       model,
+			VertexClient:      ai,
 		})
 	}
 
@@ -148,7 +158,7 @@ func main() {
 			continue
 		}
 
-		scoreRow(ctx, model, r)
+		scoreRow(ctx, ai, r)
 		enqueueRow(ctx, pq, r)
 	}
 

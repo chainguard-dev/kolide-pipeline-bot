@@ -257,7 +257,7 @@ func vtMetadata(r Row, c *vt.Client) (VTRow, error) {
 				return vr, fmt.Errorf("get object: %w", err)
 			}
 			vr[k] = vs
-			klog.V(1).Infof("VT[%s]: %s", k, vs)
+			klog.V(1).Infof("VT[%s]: %v", k, vs)
 		}
 
 		if strings.Contains(k, "remote_address") {
@@ -266,7 +266,7 @@ func vtMetadata(r Row, c *vt.Client) (VTRow, error) {
 				return vr, fmt.Errorf("get object: %w", err)
 			}
 			vr[k] = vs
-			klog.V(1).Infof("VT[%s]: %s", k, vs)
+			klog.V(1).Infof("VT[%s]: %v", k, vs)
 		}
 	}
 
