@@ -81,7 +81,7 @@ func scoreRow(ctx context.Context, ai *genai.Client, row *DecoratedRow) error {
 		- If the "remote_address" is related to GitHub or Microsoft, it probably isn't as suspicious as it looks.
 
 		Return a single-word verdict encapsulating whether the behavior and process tree contained within the JSON row is "benign", "undetermined", "suspicious", or "malicious", followed by a colon and a one to two sentence summary of the row.
-		If you are uncertain, your verdict should always be "undetermined"; if VirusTotal results are not available, do not mention the lack of data.
+		If you are uncertain, your verdict should always be "undetermined"; do not mention if any VirusTotal results are unavailable (missing data, hashes, etc.).
 
 		Your verdict and summary should never be empty; always provide a verdict and summary in the following format: "<verdict>: <summary>".
 
