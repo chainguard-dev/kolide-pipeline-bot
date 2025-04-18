@@ -80,14 +80,15 @@ func scoreRow(ctx context.Context, ai *genai.Client, row *DecoratedRow) error {
 		- If a program is "harmless_and_known", the tool itself probably benign, but even benign tools can be misused.
 		- If the "remote_address" is related to GitHub or Microsoft, it probably isn't as suspicious as it looks.
 
-		Return a single-word verdict encapsulating whether the behavior and process tree contained within the JSON row is "benign", "undetermined", "suspicious", or "malicious", followed by a colon and a one to two sentence summary of the row.
-		If you are uncertain, your verdict should always be "undetermined"; if VirusTotal results are not available, do not mention the lack of data.
+		Provide a single-word verdict encapsulating whether the behavior and process tree contained within the JSON row is "benign", "undetermined", "suspicious", or "malicious", followed by a colon and a one to two sentence summary maximum of the row.
+		If you are uncertain, your verdict should always be "undetermined".
 
 		Your verdict and summary should never be empty; always provide a verdict and summary in the following format: "<verdict>: <summary>".
 
-		Never:
-		- Add backticks or quotation marks to the beginning or end of responses.
-		- Include thoughts or reasoning in the summary.
+		Finally:
+		- Never mention whether the VirusTotal results are missing, incomplete, or unavailable (e.g., missing data, hashes, etc.) for a given row.
+		- Never add backticks or quotation marks to the beginning or end of responses.
+		- Never include thoughts or reasoning in the summary.
 		`,
 		kind)
 
@@ -147,7 +148,7 @@ func scoreRow(ctx context.Context, ai *genai.Client, row *DecoratedRow) error {
 		for _, ps := range c.Content.Parts {
 			sb.WriteString(ps.Text)
 		}
-		p := sb.String()
+		p := strings.TrimSpace(sb.String())
 		// The prompt should prevent responses wrapped or prefixed with backticks,
 		// but trim them to be safe
 		p = strings.TrimPrefix(p, "```")
