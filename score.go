@@ -84,7 +84,7 @@ func scoreRow(ctx context.Context, ai *genai.Client, row *DecoratedRow) error {
 		Your verdict and summary should never be empty; always provide a verdict and summary in the following format: "<verdict>: <summary>".
 
 		Never:
-		- Prefix or wrap responses with code-fencing (three backtick characters), quotation marks, or other punctuation.
+		- Add backticks or quotation marks to the beginning or end of responses.
 		- Include thoughts or reasoning in the summary.
 		`,
 		kind)
@@ -121,7 +121,11 @@ func scoreRow(ctx context.Context, ai *genai.Client, row *DecoratedRow) error {
 		for _, ps := range c.Content.Parts {
 			sb.WriteString(ps.Text)
 		}
-		p := strings.TrimSpace(sb.String())
+		p := sb.String()
+		// The prompt should prevent responses wrapped or prefixed with backticks,
+		// but trim them to be safe
+		p = strings.TrimPrefix(p, "```")
+		p = strings.TrimSuffix(p, "```")
 		klog.Infof("%s:%s - vertex response: %s", kind, device, p)
 		verdict, _, _ := strings.Cut(p, ": ")
 		switch {
