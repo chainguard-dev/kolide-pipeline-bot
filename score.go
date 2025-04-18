@@ -122,8 +122,8 @@ func scoreRow(ctx context.Context, ai *genai.Client, row *DecoratedRow) error {
 			sb.WriteString(ps.Text)
 		}
 		p := strings.TrimSpace(sb.String())
-		klog.Infof("%s:%s - vertex response: %v", kind, device, p)
-		verdict, _, _ := strings.Cut(fmt.Sprintf("%v", p), ": ")
+		klog.Infof("%s:%s - vertex response: %s", kind, device, p)
+		verdict, _, _ := strings.Cut(p, ": ")
 		switch {
 		case strings.Contains(strings.ToLower(verdict), "suspicious"):
 			adjustment = suspicious
@@ -136,7 +136,7 @@ func scoreRow(ctx context.Context, ai *genai.Client, row *DecoratedRow) error {
 				adjustment = benign
 			}
 		}
-		row.Interpretation = fmt.Sprintf("%v", p)
+		row.Interpretation = p
 		if adjustment != 0 {
 			klog.Infof("%s:%s - vertex score adjustment: %d", kind, device, adjustment)
 		}
