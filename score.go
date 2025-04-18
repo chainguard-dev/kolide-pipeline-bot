@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
+	"time"
 
 	"google.golang.org/genai"
 	"k8s.io/klog/v2"
@@ -78,8 +80,8 @@ func scoreRow(ctx context.Context, ai *genai.Client, row *DecoratedRow) error {
 		- If a program is "harmless_and_known", the tool itself probably benign, but even benign tools can be misused.
 		- If the "remote_address" is related to GitHub or Microsoft, it probably isn't as suspicious as it looks.
 
-		Return a single-word verdict encapsulating whether the behavior and process tree contained within the JSON row is "benign", "undetermined", "suspicious", or "malicious", followed by a colon and, in as concise a manner as possible, a Security Engineer-appropriate summary of the row.
-		If you are uncertain, your verdict should always be "undetermined".
+		Return a single-word verdict encapsulating whether the behavior and process tree contained within the JSON row is "benign", "undetermined", "suspicious", or "malicious", followed by a colon and a one to two sentence summary of the row.
+		If you are uncertain, your verdict should always be "undetermined"; if VirusTotal results are not available, do not mention the lack of data.
 
 		Your verdict and summary should never be empty; always provide a verdict and summary in the following format: "<verdict>: <summary>".
 
@@ -89,6 +91,9 @@ func scoreRow(ctx context.Context, ai *genai.Client, row *DecoratedRow) error {
 		`,
 		kind)
 
+	// Use the smaller of the row content strings or maxBudget for the thinking budget
+	tb := min(int32(len(strings.Fields(string(bs)))), maxBudget)
+	klog.Infof("%s:%s - using thinking budget of %d", kind, device, tb)
 	config := &genai.GenerateContentConfig{
 		SystemInstruction: &genai.Content{
 			Parts: []*genai.Part{{Text: prompt}},
@@ -97,6 +102,7 @@ func scoreRow(ctx context.Context, ai *genai.Client, row *DecoratedRow) error {
 		CandidateCount: 1,
 		ThinkingConfig: &genai.ThinkingConfig{
 			IncludeThoughts: false,
+			ThinkingBudget:  &tb,
 		},
 		// Tweak the response to allow references to content like malware, viruses, and other malicious behavior
 		SafetySettings: []*genai.SafetySetting{
@@ -110,9 +116,29 @@ func scoreRow(ctx context.Context, ai *genai.Client, row *DecoratedRow) error {
 			Role:  "model",
 		},
 	}
+
 	resp, err := ai.Models.GenerateContent(ctx, modelName, contents, config)
 	if err != nil {
 		return err
+	}
+
+	// Retry up to maxRetries in order to return a non-empty response
+	for i := 0; len(resp.Candidates) == 0 && i < maxRetries; i++ {
+		backoffDuration := time.Duration(math.Pow(2, float64(i))) * 500 * time.Millisecond
+		time.Sleep(backoffDuration)
+
+		klog.Infof("%s:%s - received empty candidate, retrying (%d/%d)", kind, device, i+1, maxRetries)
+
+		next, err := ai.Models.GenerateContent(ctx, modelName, contents, config)
+		if err != nil {
+			klog.Infof("%s:%s - next GenerateContent request failed with error: %v", kind, device, err)
+			continue
+		}
+
+		if len(next.Candidates) > 0 {
+			resp = next
+			break
+		}
 	}
 
 	adjustment := undetermined
