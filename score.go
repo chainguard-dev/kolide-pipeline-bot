@@ -105,8 +105,6 @@ func scoreRow(ctx context.Context, ai *genai.Client, row *DecoratedRow) error {
 		},
 		// 1 is the default value, but this makes it easy to reference
 		CandidateCount:   1,
-		Temperature:      &temp,
-		Seed:             &seed,
 		ResponseMIMEType: "application/json",
 		ThinkingConfig: &genai.ThinkingConfig{
 			IncludeThoughts: false,
