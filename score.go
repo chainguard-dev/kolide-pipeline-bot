@@ -96,13 +96,18 @@ func scoreRow(ctx context.Context, ai *genai.Client, row *DecoratedRow) error {
 
 	// Use the smaller of the row content strings or maxBudget for the thinking budget
 	tb := min(int32(len(strings.Fields(string(bs)))), maxBudget)
+	temp := float32(0)
+	seed := int32(0)
 	klog.Infof("%s:%s - using thinking budget of %d", kind, device, tb)
 	config := &genai.GenerateContentConfig{
 		SystemInstruction: &genai.Content{
 			Parts: []*genai.Part{{Text: prompt}},
 		},
 		// 1 is the default value, but this makes it easy to reference
-		CandidateCount: 1,
+		CandidateCount:   1,
+		Temperature:      &temp,
+		Seed:             &seed,
+		ResponseMIMEType: "application/json",
 		ThinkingConfig: &genai.ThinkingConfig{
 			IncludeThoughts: false,
 			ThinkingBudget:  &tb,
@@ -129,6 +134,7 @@ func scoreRow(ctx context.Context, ai *genai.Client, row *DecoratedRow) error {
 	for _, c := range gcr.Candidates {
 		var sb strings.Builder
 		for _, ps := range c.Content.Parts {
+			klog.Infof("candidate text:\n%s", ps.Text)
 			for _, ln := range strings.Split(ps.Text, "\n") {
 				// remove stray markdown
 				if !strings.HasPrefix(ln, "```") {
