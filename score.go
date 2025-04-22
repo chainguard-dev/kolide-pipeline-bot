@@ -96,15 +96,14 @@ func scoreRow(ctx context.Context, ai *genai.Client, row *DecoratedRow) error {
 
 	// Use the smaller of the row content strings or maxBudget for the thinking budget
 	tb := min(int32(len(strings.Fields(string(bs)))), maxBudget)
-	temp := float32(0)
-	seed := int32(0)
 	klog.Infof("%s:%s - using thinking budget of %d", kind, device, tb)
 	config := &genai.GenerateContentConfig{
 		SystemInstruction: &genai.Content{
 			Parts: []*genai.Part{{Text: prompt}},
 		},
 		// 1 is the default value, but this makes it easy to reference
-		CandidateCount:   1,
+		CandidateCount: 1,
+		// Temperature and Seed are omitted to promote periodic reinterpretation of data
 		ResponseMIMEType: "application/json",
 		ThinkingConfig: &genai.ThinkingConfig{
 			IncludeThoughts: false,
