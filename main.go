@@ -35,9 +35,8 @@ import (
 )
 
 const (
-	maxBudget  int32  = 24576
-	maxRetries int    = 3
-	modelName  string = "gemini-2.5-flash-preview-04-17"
+	maxBudget int32  = 2048
+	modelName string = "gemini-2.5-flash-preview-04-17"
 )
 
 var (
@@ -93,7 +92,7 @@ func main() {
 		log.Fatalf("genai client: %v", err)
 	}
 
-	if err := scoreRow(ctx, ai, &DecoratedRow{Kind: "ai-test"}); err != nil {
+	if err := scoreRow(ctx, ai, &DecoratedRow{Kind: "1_ai-test"}); err != nil {
 		klog.Exitf("AI test failed: %v\nDo you have 'Vertex AI User' access?", err)
 	}
 

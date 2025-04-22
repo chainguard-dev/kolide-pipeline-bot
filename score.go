@@ -4,10 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math"
 	"strconv"
 	"strings"
-	"time"
 
 	"google.golang.org/genai"
 	"k8s.io/klog/v2"
@@ -19,6 +17,12 @@ const (
 	suspicious
 	malicious
 )
+
+type aiResponse struct {
+	Verdict        string `json:"verdict"`
+	Summary        string `json:"summary"`
+	ThoughtProcess string `json:"thought_process"`
+}
 
 func scoreRow(ctx context.Context, ai *genai.Client, row *DecoratedRow) error {
 	kind := row.Kind
@@ -78,17 +82,15 @@ func scoreRow(ctx context.Context, ai *genai.Client, row *DecoratedRow) error {
 		- If the VirusTotal struct is empty, it may mean that VirusTotal wasn't available (API error, rate limit, outage, etc.).
 		- A verdict of "undetected_no_opinion" means that VirusTotal did not know about the specified hash. This is much more common on Linux. It may be a binary that the user built themselves locally.
 		- If a program is "harmless_and_known", the tool itself probably benign, but even benign tools can be misused.
-		- If the "remote_address" is related to GitHub or Microsoft, it probably isn't as suspicious as it looks.
+		- If the "remote_address" is related to GitHub, Google, or Microsoft, it probably isn't as suspicious as it looks.
 
-		Provide a single-word verdict encapsulating whether the behavior and process tree contained within the JSON row is "benign", "undetermined", "suspicious", or "malicious", followed by a colon and a one to two sentence summary maximum of the row.
-		If you are uncertain, your verdict should always be "undetermined".
+		Your response should be a raw valid parseable JSON object with the following attributes:
 
-		Your verdict and summary should never be empty; always provide a verdict and summary in the following format: "<verdict>: <summary>".
+		- verdict:  a single-word verdict encapsulating whether the behavior and process tree contained within the JSON row is "benign", "undetermined", "suspicious", or "malicious". If you are uncertain, the verdict should be "undetermined"
+		- summary: terse summary of the event observed and why you arrived at your verdict. preferably 1 sentence, but no more than 2.
+		- thought_process: how you thought about this
 
-		Finally:
-		- Never mention whether the VirusTotal results are missing, incomplete, or unavailable (e.g., missing data, hashes, etc.) for a given row.
-		- Never add backticks or quotation marks to the beginning or end of responses.
-		- Never include thoughts or reasoning in the summary.
+		VirusTotal will often not have matches for sha256 checksums in our environment, so it is not necessary to note the lack of them in your summary.
 		`,
 		kind)
 
@@ -118,56 +120,44 @@ func scoreRow(ctx context.Context, ai *genai.Client, row *DecoratedRow) error {
 		},
 	}
 
-	resp, err := ai.Models.GenerateContent(ctx, modelName, contents, config)
+	gcr, err := ai.Models.GenerateContent(ctx, modelName, contents, config)
 	if err != nil {
 		return err
 	}
 
-	// Retry up to maxRetries in order to return a non-empty response
-	for i := 0; len(resp.Candidates) == 0 && i < maxRetries; i++ {
-		backoffDuration := time.Duration(math.Pow(2, float64(i))) * 500 * time.Millisecond
-		time.Sleep(backoffDuration)
-
-		klog.Infof("%s:%s - received empty candidate, retrying (%d/%d)", kind, device, i+1, maxRetries)
-
-		next, err := ai.Models.GenerateContent(ctx, modelName, contents, config)
-		if err != nil {
-			klog.Infof("%s:%s - next GenerateContent request failed with error: %v", kind, device, err)
-			continue
-		}
-
-		if len(next.Candidates) > 0 {
-			resp = next
-			break
-		}
-	}
-
 	adjustment := undetermined
-	for _, c := range resp.Candidates {
+	for _, c := range gcr.Candidates {
 		var sb strings.Builder
 		for _, ps := range c.Content.Parts {
-			sb.WriteString(ps.Text)
+			for _, ln := range strings.Split(ps.Text, "\n") {
+				// remove stray markdown
+				if !strings.HasPrefix(ln, "```") {
+					sb.WriteString(ln)
+				}
+			}
 		}
-		p := strings.TrimSpace(sb.String())
-		// The prompt should prevent responses wrapped or prefixed with backticks,
-		// but trim them to be safe
-		p = strings.TrimPrefix(p, "```")
-		p = strings.TrimSuffix(p, "```")
-		klog.Infof("%s:%s - vertex response: %s", kind, device, p)
-		verdict, _, _ := strings.Cut(p, ": ")
-		switch {
-		case strings.Contains(strings.ToLower(verdict), "suspicious"):
+
+		var resp aiResponse
+		data := []byte(sb.String())
+		err := json.Unmarshal([]byte(sb.String()), &resp)
+		if err != nil {
+			return fmt.Errorf("unmarshal[%s]: %w", data, err)
+		}
+		klog.Infof("%s:%s - vertex response: %s: %s", kind, device, resp.Verdict, resp.Summary)
+
+		switch resp.Verdict {
+		case "suspicious":
 			adjustment = suspicious
-		case strings.Contains(strings.ToLower(verdict), "malicious"):
+		case "malicious":
 			adjustment = malicious
-		case strings.Contains(strings.ToLower(verdict), "benign"):
+		case "benign":
 			if containsUnknownBinary {
 				klog.Infof("%s:%s - not adjusting benign result due to unknown binary", kind, device)
 			} else {
 				adjustment = benign
 			}
 		}
-		row.Interpretation = p
+		row.Interpretation = fmt.Sprintf("%s: %s", resp.Verdict, resp.Summary)
 		if adjustment != 0 {
 			klog.Infof("%s:%s - vertex score adjustment: %d", kind, device, adjustment)
 		}
