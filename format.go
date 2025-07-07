@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"regexp"
 
 	"github.com/slack-go/slack"
 	"k8s.io/klog/v2"
@@ -97,6 +98,32 @@ func treeLine(prefix string, row Row, vr VTRow, level int) string {
 		cmd = strings.Replace(cmd, cparts[0], path, 1)
 	}
 
+	// look for curl commands and strip credentials if any are found
+	if strings.Contains(cmd, "curl") {
+    	// Bearer tokens
+	    if strings.Contains(cmd, "Bearer") {
+	        re := regexp.MustCompile(`(?i)(Authorization:\s*Bearer\s+)(\S+)`)
+	        cmd = re.ReplaceAllString(cmd, `${1}<token stripped from output>`)
+	    }
+
+	    // API keys in headers
+	    if strings.Contains(cmd, "-H") {
+	        re := regexp.MustCompile(`(?i)(-H\s+["\'][^"']*(?:api[-_]?key|auth|token)[^"']*:\s*)([^"'\s]+)(["\'])`)
+	        cmd = re.ReplaceAllString(cmd, `${1}<key stripped from output>${3}`)
+	    }
+
+	    // API keys in URL parameters
+	    if strings.Contains(cmd, "=") {
+	        re := regexp.MustCompile(`(?i)([\?&][^=]*(?:api[-_]?key|auth|token)[^=]*=)([^&\s"']+)`)
+	        cmd = re.ReplaceAllString(cmd, `${1}<key stripped from output>`)
+	    }
+
+	    // Basic auth
+	    if strings.Contains(cmd, "-u") {
+	        re := regexp.MustCompile(`(?i)(-u\s+)(\S+)`)
+	        cmd = re.ReplaceAllString(cmd, `${1}<credentials stripped from output>`)
+	    }
+	}
 	// If command-line does not contain the name, prepend it to the line
 	if name != "" && filepath.Base(cparts[0]) != name {
 		cmd = fmt.Sprintf("{%s} %s", name, cmd)
