@@ -36,7 +36,7 @@ import (
 
 const (
 	maxBudget int32  = 2048
-	modelName string = "gemini-2.5-flash-preview-04-17"
+	modelName string = "gemini-2.5-flash"
 )
 
 var (
