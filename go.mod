@@ -6,7 +6,7 @@ require (
 	cloud.google.com/go/storage v1.51.0
 	github.com/VirusTotal/vt-go v1.0.1
 	github.com/google/go-cmp v0.7.0
-	github.com/slack-go/slack v0.16.0
+	github.com/slack-go/slack v0.23.1
 	google.golang.org/api v0.229.0
 	google.golang.org/genai v1.1.0
 	k8s.io/klog/v2 v2.130.1
